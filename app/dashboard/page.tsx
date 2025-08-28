@@ -8,7 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { QRScannerComponent } from "@/components/qr-scanner"
+import dynamic from "next/dynamic"
+const QRScannerComponent = dynamic(() => import("@/components/qr-scanner").then(mod => mod.QRScannerComponent), { ssr: false })
 import { SyncManager } from "@/components/sync-manager"
 import { DashboardSkeleton } from "@/components/loading-skeleton"
 import { offlineStorage } from "@/lib/offline-storage"

@@ -1,100 +1,76 @@
-"use client"
 
-import { useRef, useState } from 'react';
-import { BrowserMultiFormatReader, BrowserQRCodeReader } from '@zxing/browser';
+"use client";
 
+import { useRef, useState, useEffect } from 'react';
+import { BrowserMultiFormatReader } from '@zxing/browser';
+
+export default function QRCamera() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null);
   const [result, setResult] = useState<string>('');
   const [status, setStatus] = useState<string>('');
   const [scanning, setScanning] = useState<boolean>(false);
-  const [galleryImage, setGalleryImage] = useState<string | null>(null);
+  const [cameraOn, setCameraOn] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
 
-  const handleQRResult = async (qrText: string, codeReader?: BrowserMultiFormatReader | null) => {
-    setResult(qrText);
-    setStatus('Sending to backend...');
-    setScanning(true);
-    try {
-      const response = await fetch('/api/attendance/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ qrId: qrText }),
-      });
-      const data = await response.json();
-      if (data.success) {
-        setStatus('✅ Row highlighted in sheet!');
-      } else {
-        setStatus('❌ ' + (data.message || 'Not found'));
+  // Start camera and scan on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        setStatus('Detecting cameras...');
+        const foundDevices = await BrowserMultiFormatReader.listVideoInputDevices();
+        setDevices(foundDevices);
+        if (foundDevices.length > 0) {
+          setSelectedDeviceId(foundDevices[0].deviceId);
+          setError(null);
+        } else {
+          setError('No camera found.');
+        }
+      } catch (e: any) {
+        setError(e?.message || 'Camera detection error');
       }
-    } catch (err) {
-      setStatus('❌ Error sending to backend.');
-    }
-    setScanning(false);
-  // No reset method on BrowserMultiFormatReader in current @zxing/browser
-  };
+    })();
+  }, []);
 
-  const startScan = async () => {
+  // Start/stop scanning when cameraOn or selectedDeviceId changes
+  useEffect(() => {
+    if (!cameraOn || !selectedDeviceId || !videoRef.current) return;
     setStatus('Starting camera...');
     setScanning(true);
-    setGalleryImage(null);
     const codeReader = new BrowserMultiFormatReader();
-    try {
-      const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
-      if (!videoInputDevices.length) throw new Error('No camera found');
-      const selectedDeviceId = videoInputDevices[0].deviceId;
-      setStatus('Scanning live...');
-      codeReader.decodeFromVideoDevice(selectedDeviceId, videoRef.current as HTMLVideoElement, async (res, err) => {
-        if (res) {
-          setStatus('QR code found: ' + res.getText());
-          handleQRResult(res.getText(), codeReader);
-        }
-      });
-    } catch (e: any) {
-      setStatus('Camera error: ' + (e?.message || 'Unknown error'));
-      setScanning(false);
-    }
-  };
-
-  const handleGalleryClick = () => {
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) {
-      setStatus('No file selected.');
-      return;
-    }
-    setStatus('Uploading image...');
-    setGalleryImage(null);
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const resultUrl = event.target?.result;
-      if (typeof resultUrl === 'string') {
-        setGalleryImage(resultUrl);
-        setStatus('Scanning image...');
-        const img = new window.Image();
-        img.src = resultUrl;
-        img.onload = async () => {
-          try {
-            const codeReader = new BrowserQRCodeReader();
-            const result = await codeReader.decodeFromImageElement(img);
-            setStatus('QR code found: ' + result.getText());
-            handleQRResult(result.getText(), null);
-          } catch (err) {
-            setStatus('❌ No QR code found in image.');
-          }
-        };
-        img.onerror = () => {
-          setStatus('Error loading image.');
-        };
+    codeReaderRef.current = codeReader;
+    codeReader.decodeFromVideoDevice(selectedDeviceId, videoRef.current, (res, err) => {
+      if (res) {
+        setStatus('QR code found: ' + res.getText());
+        setResult(res.getText());
+        setScanning(false);
+  setCameraOn(false);
       }
+      if (err && err.message) {
+        setError(err.message);
+        setStatus('Camera error: ' + err.message);
+        setScanning(false);
+  setCameraOn(false);
+      }
+    });
+    return () => {
+  // Cleanup handled by effect/state
     };
-    reader.onerror = () => {
-      setStatus('Error reading file.');
-    };
-    reader.readAsDataURL(file);
+  }, [cameraOn, selectedDeviceId]);
+
+  const handleStart = () => {
+    setError(null);
+    setResult('');
+    setCameraOn(true);
+  };
+
+  const handleStop = () => {
+    setCameraOn(false);
+    setScanning(false);
+  // Cleanup handled by effect/state
+    setStatus('Camera stopped.');
   };
 
   return (
@@ -105,29 +81,42 @@ import { BrowserMultiFormatReader, BrowserQRCodeReader } from '@zxing/browser';
           autoPlay
           playsInline
           className="rounded shadow border w-full max-w-md aspect-video bg-black"
-          style={{ display: scanning && !galleryImage ? 'block' : 'none' }}
+          style={{ display: cameraOn ? 'block' : 'none' }}
         />
-        {galleryImage && (
-          <img src={galleryImage} alt="QR from gallery" className="rounded shadow border w-full max-w-md aspect-video object-contain bg-gray-100" style={{ maxHeight: 320 }} />
-        )}
-        <p className="mt-4 text-gray-600 text-center">Scan a QR code using your camera or import an image from your gallery.</p>
-        <div className="flex gap-4 mt-4">
-          <button onClick={startScan} className="px-4 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition disabled:opacity-50" disabled={scanning && !galleryImage}>
-            {scanning && !galleryImage ? 'Scanning...' : 'Start Scan'}
+        <div className="flex gap-2 mt-4">
+          <button
+            onClick={handleStart}
+            className="px-4 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 transition disabled:opacity-50"
+            disabled={cameraOn || !selectedDeviceId}
+          >
+            Start Camera
           </button>
-          <button onClick={handleGalleryClick} className="px-4 py-2 bg-green-600 text-white rounded shadow hover:bg-green-700 transition" disabled={scanning && !galleryImage}>
-            Scan from Gallery
+          <button
+            onClick={handleStop}
+            className="px-4 py-2 bg-red-600 text-white rounded shadow hover:bg-red-700 transition disabled:opacity-50"
+            disabled={!cameraOn}
+          >
+            Stop Camera
           </button>
-          <input
-            type="file"
-            accept="image/*"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            style={{ display: 'none' }}
-          />
+          {devices.length > 1 && (
+            <select
+              className="ml-2 border rounded px-2 py-1 text-sm"
+              value={selectedDeviceId || ''}
+              onChange={e => setSelectedDeviceId(e.target.value)}
+              disabled={cameraOn}
+            >
+              {devices.map(device => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label || `Camera ${device.deviceId}`}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="mt-4 text-center text-base font-medium min-h-[1.5em]">
-          {status}
+          {error ? (
+            <span className="text-red-600 font-semibold">{error}</span>
+          ) : status}
         </div>
         {result && (
           <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-blue-800 w-full text-center break-words">
