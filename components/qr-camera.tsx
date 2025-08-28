@@ -3,15 +3,14 @@
 import { useRef, useState } from 'react';
 import { BrowserMultiFormatReader, BrowserQRCodeReader } from '@zxing/browser';
 
-export default function QRCamera() {
-  const videoRef = useRef(null);
-  const fileInputRef = useRef(null);
-  const [result, setResult] = useState('');
-  const [status, setStatus] = useState('');
-  const [scanning, setScanning] = useState(false);
-  const [galleryImage, setGalleryImage] = useState(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [result, setResult] = useState<string>('');
+  const [status, setStatus] = useState<string>('');
+  const [scanning, setScanning] = useState<boolean>(false);
+  const [galleryImage, setGalleryImage] = useState<string | null>(null);
 
-  const handleQRResult = async (qrText, codeReader) => {
+  const handleQRResult = async (qrText: string, codeReader?: BrowserMultiFormatReader | null) => {
     setResult(qrText);
     setStatus('Sending to backend...');
     setScanning(true);
@@ -31,7 +30,7 @@ export default function QRCamera() {
       setStatus('❌ Error sending to backend.');
     }
     setScanning(false);
-    if (codeReader) codeReader.reset();
+  // No reset method on BrowserMultiFormatReader in current @zxing/browser
   };
 
   const startScan = async () => {
@@ -41,27 +40,28 @@ export default function QRCamera() {
     const codeReader = new BrowserMultiFormatReader();
     try {
       const videoInputDevices = await BrowserMultiFormatReader.listVideoInputDevices();
+      if (!videoInputDevices.length) throw new Error('No camera found');
       const selectedDeviceId = videoInputDevices[0].deviceId;
       setStatus('Scanning live...');
-      codeReader.decodeFromVideoDevice(selectedDeviceId, videoRef.current, async (res, err) => {
+      codeReader.decodeFromVideoDevice(selectedDeviceId, videoRef.current as HTMLVideoElement, async (res, err) => {
         if (res) {
           setStatus('QR code found: ' + res.getText());
           handleQRResult(res.getText(), codeReader);
         }
       });
-    } catch (e) {
-      setStatus('Camera error: ' + e.message);
+    } catch (e: any) {
+      setStatus('Camera error: ' + (e?.message || 'Unknown error'));
       setScanning(false);
     }
   };
 
   const handleGalleryClick = () => {
-    if (fileInputRef.current) fileInputRef.current.value = null;
+    if (fileInputRef.current) fileInputRef.current.value = '';
     fileInputRef.current?.click();
   };
 
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files && e.target.files[0];
     if (!file) {
       setStatus('No file selected.');
       return;
@@ -70,25 +70,28 @@ export default function QRCamera() {
     setGalleryImage(null);
     const reader = new FileReader();
     reader.onload = async (event) => {
-      setGalleryImage(event.target.result);
-      setStatus('Scanning image...');
-      const img = new window.Image();
-      img.src = event.target.result;
-      img.onload = async () => {
-        try {
-          const codeReader = new BrowserQRCodeReader();
-          const result = await codeReader.decodeFromImageElement(img);
-          setStatus('QR code found: ' + result.getText());
-          handleQRResult(result.getText(), null);
-        } catch (err) {
-          setStatus('❌ No QR code found in image.');
-        }
-      };
-      img.onerror = (err) => {
-        setStatus('Error loading image.');
-      };
+      const resultUrl = event.target?.result;
+      if (typeof resultUrl === 'string') {
+        setGalleryImage(resultUrl);
+        setStatus('Scanning image...');
+        const img = new window.Image();
+        img.src = resultUrl;
+        img.onload = async () => {
+          try {
+            const codeReader = new BrowserQRCodeReader();
+            const result = await codeReader.decodeFromImageElement(img);
+            setStatus('QR code found: ' + result.getText());
+            handleQRResult(result.getText(), null);
+          } catch (err) {
+            setStatus('❌ No QR code found in image.');
+          }
+        };
+        img.onerror = () => {
+          setStatus('Error loading image.');
+        };
+      }
     };
-    reader.onerror = (err) => {
+    reader.onerror = () => {
       setStatus('Error reading file.');
     };
     reader.readAsDataURL(file);

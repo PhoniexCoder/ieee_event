@@ -19,6 +19,9 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
   const [torchOn, setTorchOn] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastScan, setLastScan] = useState<string | null>(null)
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
+  const [permissionRequested, setPermissionRequested] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null)
 
@@ -46,20 +49,41 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
   )
 
   // Start/stop camera and scanning
+  // Prompt for camera permission and enumerate devices
+  const enumerateDevices = useCallback(async () => {
+    try {
+      setPermissionRequested(true);
+      // Prompt for permission by requesting any camera
+      await navigator.mediaDevices.getUserMedia({ video: true });
+      const foundDevices = await BrowserMultiFormatReader.listVideoInputDevices();
+      setDevices(foundDevices);
+      if (foundDevices.length > 0) {
+        // Prefer back/rear camera
+        let selected = foundDevices.find(d => /back|rear/i.test(d.label)) || foundDevices[0];
+        setSelectedDeviceId(selected.deviceId);
+        setError(null);
+      } else {
+        setError("No camera found. Please ensure your device has a camera and permission is granted.");
+      }
+    } catch (e: any) {
+      setError(e.message || "Camera error. Please grant camera permission and reload.");
+      setDevices([]);
+    }
+  }, []);
+
   useEffect(() => {
-    if (isCameraOn && videoRef.current) {
+    if (isCameraOn && !permissionRequested) {
+      enumerateDevices();
+    }
+  }, [isCameraOn, permissionRequested, enumerateDevices]);
+
+  useEffect(() => {
+    if (isCameraOn && videoRef.current && selectedDeviceId) {
       const codeReader = new BrowserMultiFormatReader();
       codeReaderRef.current = codeReader;
       let stopped = false;
       (async () => {
         try {
-          const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-          // Try to find a device with 'back' or 'rear' in the label (case-insensitive)
-          let selectedDevice = devices.find(d => /back|rear/i.test(d.label));
-          if (!selectedDevice) selectedDevice = devices[0];
-          const selectedDeviceId = selectedDevice?.deviceId;
-          if (!selectedDeviceId) throw new Error("No camera found");
-          setError(null);
           codeReader.decodeFromVideoDevice(selectedDeviceId, videoRef.current!, (res, err) => {
             if (stopped) return;
             if (res) {
@@ -75,14 +99,14 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
       })();
       return () => {
         stopped = true;
-        if (typeof codeReader.reset === 'function') codeReader.reset();
+  codeReaderRef.current = null;
       };
     }
     // Stop camera if not on
-    if (!isCameraOn && codeReaderRef.current) {
-      if (typeof codeReaderRef.current.reset === 'function') codeReaderRef.current.reset();
+    if ((!isCameraOn || !selectedDeviceId) && codeReaderRef.current) {
+  codeReaderRef.current = null;
     }
-  }, [isCameraOn, handleZXingResult, handleError]);
+  }, [isCameraOn, selectedDeviceId, handleZXingResult, handleError]);
 
   const toggleCamera = () => {
     setIsCameraOn(!isCameraOn)
@@ -111,11 +135,16 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
+            {error.includes('No camera found') || error.toLowerCase().includes('permission') ? (
+              <Button size="sm" className="mt-2" onClick={enumerateDevices}>
+                Retry Camera Access
+              </Button>
+            ) : null}
           </Alert>
         )}
 
         <div className="relative aspect-square bg-muted rounded-lg overflow-hidden">
-          {isCameraOn ? (
+          {isCameraOn && !error ? (
             <video
               ref={videoRef}
               autoPlay
@@ -149,25 +178,41 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
         </div>
 
         {/* Controls */}
-        <div className="flex gap-2 justify-center">
-          <Button variant={isCameraOn ? "destructive" : "default"} size="sm" onClick={toggleCamera} className="flex-1">
-            {isCameraOn ? (
-              <>
-                <CameraOff className="w-4 h-4 mr-2" />
-                Stop Camera
-              </>
-            ) : (
-              <>
-                <Camera className="w-4 h-4 mr-2" />
-                Start Camera
-              </>
-            )}
-          </Button>
-
-          {isCameraOn && (
-            <Button variant="outline" size="sm" onClick={toggleTorch} disabled={!isCameraOn}>
-              {torchOn ? <FlashlightOff className="w-4 h-4" /> : <Flashlight className="w-4 h-4" />}
+        <div className="flex flex-col gap-2 justify-center items-center">
+          <div className="w-full flex gap-2">
+            <Button variant={isCameraOn ? "destructive" : "default"} size="sm" onClick={toggleCamera} className="flex-1">
+              {isCameraOn ? (
+                <>
+                  <CameraOff className="w-4 h-4 mr-2" />
+                  Stop Camera
+                </>
+              ) : (
+                <>
+                  <Camera className="w-4 h-4 mr-2" />
+                  Start Camera
+                </>
+              )}
             </Button>
+            {isCameraOn && (
+              <Button variant="outline" size="sm" onClick={toggleTorch} disabled={!isCameraOn}>
+                {torchOn ? <FlashlightOff className="w-4 h-4" /> : <Flashlight className="w-4 h-4" />}
+              </Button>
+            )}
+          </div>
+          {/* Camera selection dropdown */}
+          {devices.length > 1 && (
+            <select
+              className="mt-2 border rounded px-2 py-1 text-sm"
+              value={selectedDeviceId || ''}
+              onChange={e => setSelectedDeviceId(e.target.value)}
+              disabled={!isCameraOn}
+            >
+              {devices.map(device => (
+                <option key={device.deviceId} value={device.deviceId}>
+                  {device.label || `Camera ${device.deviceId}`}
+                </option>
+              ))}
+            </select>
           )}
         </div>
 
