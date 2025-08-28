@@ -114,13 +114,22 @@ export async function markStudentPresent(
     // Update attendance status
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `Students!F${student.rowIndex}`,
+      range: `Form responses 1!K${student.rowIndex}`,
       valueInputOption: "RAW",
       requestBody: {
         values: [["Present"]],
       },
     })
 
+    // Get the correct sheetId for 'Form responses 1'
+    const meta = await sheets.spreadsheets.get({ spreadsheetId });
+    const formSheet = meta.data.sheets?.find(
+      (s) => s.properties?.title === "Form responses 1"
+    );
+    const sheetId = formSheet?.properties?.sheetId;
+    if (sheetId === undefined) {
+      throw new Error("Could not find sheetId for 'Form responses 1'");
+    }
     // Highlight the row in green
     await sheets.spreadsheets.batchUpdate({
       spreadsheetId,
@@ -129,11 +138,11 @@ export async function markStudentPresent(
           {
             repeatCell: {
               range: {
-                sheetId: 0, // Assuming Students sheet is the first sheet
+                sheetId,
                 startRowIndex: student.rowIndex - 1,
                 endRowIndex: student.rowIndex,
                 startColumnIndex: 0,
-                endColumnIndex: 6,
+                endColumnIndex: 12, // A-L columns
               },
               cell: {
                 userEnteredFormat: {
@@ -167,8 +176,11 @@ export async function markStudentPresent(
       message: "Student marked present successfully",
     }
   } catch (error) {
-    console.error("[] Error marking student present:", error)
-    return { success: false, message: "Failed to update attendance" }
+    console.error("[markStudentPresent] Error marking student present:", error);
+    if (error instanceof Error) {
+      return { success: false, message: error.message };
+    }
+    return { success: false, message: "Failed to update attendance" };
   }
 }
 
@@ -200,14 +212,17 @@ export async function getAttendanceStats(): Promise<{
   attendanceRate: number
 }> {
   try {
-    const totalStudents = await getTotalStudents()
-    // Optionally, fetch present/absent students if needed, or set to 0 for now
+    const students = await getStudents();
+    const totalStudents = students.length;
+    const presentStudents = students.filter(s => s.attendance?.toLowerCase() === "present").length;
+    const absentStudents = totalStudents - presentStudents;
+    const attendanceRate = totalStudents > 0 ? Math.round((presentStudents / totalStudents) * 100) : 0;
     return {
       totalStudents,
-      presentStudents: 0,
-      absentStudents: 0,
-      attendanceRate: 0,
-    }
+      presentStudents,
+      absentStudents,
+      attendanceRate,
+    };
   } catch (error) {
     console.error("[] Error getting attendance stats:", error)
     return {
@@ -215,7 +230,7 @@ export async function getAttendanceStats(): Promise<{
       presentStudents: 0,
       absentStudents: 0,
       attendanceRate: 0,
-    }
+    };
   }
 }
 

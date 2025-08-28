@@ -1,45 +1,46 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { auth } from "@/lib/auth"
+import { getServerSession } from "next-auth/next"
+import { authOptions } from "@/lib/auth"
 import { markStudentPresent } from "@/lib/google-sheets"
 
 export async function POST(request: NextRequest) {
+  let response;
   try {
-    const session = await auth()
+  const session = await getServerSession(authOptions);
 
     if (!session?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    const { qrId } = await request.json()
-
-    if (!qrId) {
-      return NextResponse.json({ error: "QR ID is required" }, { status: 400 })
-    }
-
-
-    const result = await markStudentPresent(
-      qrId,
-      session.user.email || "unknown",
-      session.user.name || "Unknown Volunteer",
-    )
-
-    if (result.success) {
-      return NextResponse.json({
-        success: true,
-        message: result.message,
-        student: result.student,
-      })
+      response = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     } else {
-      return NextResponse.json(
-        {
-          success: false,
-          message: result.message,
-          student: result.student,
-        },
-        { status: 400 },
-      )
+      const { qrId } = await request.json();
+      if (!qrId) {
+        response = NextResponse.json({ error: "QR ID is required" }, { status: 400 });
+      } else {
+        const result = await markStudentPresent(
+          qrId,
+          session.user.email || "unknown",
+          session.user.name || "Unknown Volunteer",
+        );
+        if (result.success) {
+          response = NextResponse.json({
+            success: true,
+            message: result.message,
+            student: result.student,
+          });
+        } else {
+          response = NextResponse.json(
+            {
+              success: false,
+              message: result.message,
+              student: result.student,
+            },
+            { status: 400 },
+          );
+        }
+      }
     }
   } catch (error) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("[API /api/attendance/scan] Unhandled error:", error);
+    response = NextResponse.json({ error: error instanceof Error ? error.message : "Internal server error" }, { status: 500 });
   }
+  return response;
 }

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useCallback } from "react"
-import { Scanner } from "@yudiel/react-qr-scanner"
+import { useState, useCallback, useRef, useEffect } from "react"
+import { BrowserMultiFormatReader } from "@zxing/browser"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -19,15 +19,16 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
   const [torchOn, setTorchOn] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastScan, setLastScan] = useState<string | null>(null)
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null)
 
-  const handleScan = useCallback(
-    (result: any) => {
-      if (result?.text && result.text !== lastScan) {
-        console.log("[] QR Code scanned:", result.text)
-        setLastScan(result.text)
-        onScan(result.text)
-
-        // Brief pause to prevent rapid duplicate scans
+  // ZXing scan handler
+  const handleZXingResult = useCallback(
+    (result: string) => {
+      if (result && result !== lastScan) {
+        console.log("[] QR Code scanned:", result)
+        setLastScan(result)
+        onScan(result)
         setTimeout(() => setLastScan(null), 2000)
       }
     },
@@ -43,6 +44,45 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
     },
     [onError],
   )
+
+  // Start/stop camera and scanning
+  useEffect(() => {
+    if (isCameraOn && videoRef.current) {
+      const codeReader = new BrowserMultiFormatReader();
+      codeReaderRef.current = codeReader;
+      let stopped = false;
+      (async () => {
+        try {
+          const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+          // Try to find a device with 'back' or 'rear' in the label (case-insensitive)
+          let selectedDevice = devices.find(d => /back|rear/i.test(d.label));
+          if (!selectedDevice) selectedDevice = devices[0];
+          const selectedDeviceId = selectedDevice?.deviceId;
+          if (!selectedDeviceId) throw new Error("No camera found");
+          setError(null);
+          codeReader.decodeFromVideoDevice(selectedDeviceId, videoRef.current!, (res, err) => {
+            if (stopped) return;
+            if (res) {
+              handleZXingResult(res.getText());
+            }
+            if (err && err.name !== "NotFoundException") {
+              handleError(err);
+            }
+          });
+        } catch (e: any) {
+          setError(e.message || "Camera error");
+        }
+      })();
+      return () => {
+        stopped = true;
+        if (typeof codeReader.reset === 'function') codeReader.reset();
+      };
+    }
+    // Stop camera if not on
+    if (!isCameraOn && codeReaderRef.current) {
+      if (typeof codeReaderRef.current.reset === 'function') codeReaderRef.current.reset();
+    }
+  }, [isCameraOn, handleZXingResult, handleError]);
 
   const toggleCamera = () => {
     setIsCameraOn(!isCameraOn)
@@ -76,17 +116,12 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
 
         <div className="relative aspect-square bg-muted rounded-lg overflow-hidden">
           {isCameraOn ? (
-            <Scanner
-              onScan={handleScan}
-              onError={handleError}
-              constraints={{
-                facingMode: "environment", // Use back camera
-                aspectRatio: 1,
-              }}
-              styles={{
-                container: { width: "100%", height: "100%" },
-                video: { width: "100%", height: "100%", objectFit: "cover" },
-              }}
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              className="w-full h-full object-cover rounded-lg"
+              style={{ background: "black" }}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-muted-foreground">
