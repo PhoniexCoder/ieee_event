@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useRef, useEffect } from "react"
-import { BrowserMultiFormatReader } from "@zxing/browser"
+import { BrowserQRCodeReader } from "@zxing/browser"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -11,21 +11,15 @@ import { Camera, CameraOff, Flashlight, FlashlightOff } from "lucide-react"
 interface QRScannerProps {
   onScan: (result: string) => void
   onError?: (error: string) => void
-  isScanning?: boolean
 }
 
-export function QRScannerComponent({ onScan, onError, isScanning = true }: QRScannerProps) {
-  const [isCameraOn, setIsCameraOn] = useState(isScanning)
-  const [torchOn, setTorchOn] = useState(false)
+export function QRScannerComponent({ onScan, onError }: QRScannerProps) {
   const [error, setError] = useState<string | null>(null)
   const [lastScan, setLastScan] = useState<string | null>(null)
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([])
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null)
-  const [permissionRequested, setPermissionRequested] = useState(false);
+  const [scanning, setScanning] = useState(false)
   const videoRef = useRef<HTMLVideoElement | null>(null)
-  const codeReaderRef = useRef<BrowserMultiFormatReader | null>(null)
+  const codeReaderRef = useRef<BrowserQRCodeReader | null>(null)
 
-  // ZXing scan handler
   const handleZXingResult = useCallback(
     (result: string) => {
       if (result && result !== lastScan) {
@@ -48,78 +42,39 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
     [onError],
   )
 
-  // Start/stop camera and scanning
-  // Prompt for camera permission and enumerate devices
-  const enumerateDevices = useCallback(async () => {
-    try {
-      setPermissionRequested(true);
-      // Prompt for permission by requesting any camera
-      await navigator.mediaDevices.getUserMedia({ video: true });
-      const foundDevices = await BrowserMultiFormatReader.listVideoInputDevices();
-      setDevices(foundDevices);
-      if (foundDevices.length > 0) {
-        // Prefer back/rear camera
-        let selected = foundDevices.find(d => /back|rear/i.test(d.label)) || foundDevices[0];
-        setSelectedDeviceId(selected.deviceId);
-        setError(null);
-      } else {
-        setError("No camera found. Please ensure your device has a camera and permission is granted.");
-      }
-    } catch (e: any) {
-      setError(e.message || "Camera error. Please grant camera permission and reload.");
-      setDevices([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isCameraOn && !permissionRequested) {
-      enumerateDevices();
-    }
-  }, [isCameraOn, permissionRequested, enumerateDevices]);
-
-  useEffect(() => {
-    if (isCameraOn && videoRef.current && selectedDeviceId) {
-      const codeReader = new BrowserMultiFormatReader();
-      codeReaderRef.current = codeReader;
-
-      navigator.mediaDevices.getUserMedia({ video: { deviceId: selectedDeviceId } })
-        .then(stream => {
-          if (videoRef.current) {
-            videoRef.current.srcObject = stream;
-            videoRef.current.onloadedmetadata = () => {
-              codeReader.decodeFromVideoElement(videoRef.current!, (result, error) => {
-                if (result) {
-                  handleZXingResult(result.getText());
-                }
-                if (error && error.name !== "NotFoundException") {
-                  handleError(error);
-                }
-              });
-            };
-          }
-        })
-        .catch(err => handleError(err));
-
-      return () => {
-        if (codeReaderRef.current) {
-          codeReaderRef.current.reset();
-          codeReaderRef.current = null;
-        }
-        if (videoRef.current && videoRef.current.srcObject) {
-          (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
-          videoRef.current.srcObject = null;
-        }
-      };
-    }
-  }, [isCameraOn, selectedDeviceId, handleZXingResult, handleError]);
-
-  const toggleCamera = () => {
-    setIsCameraOn(!isCameraOn)
+  const startScan = async () => {
     setError(null)
+    setScanning(true)
+    codeReaderRef.current = new BrowserQRCodeReader()
+    try {
+      await codeReaderRef.current.decodeFromVideoDevice(
+        undefined,
+        videoRef.current!,
+        (result, err, controls) => {
+          if (result) {
+            controls.stop()
+            setScanning(false)
+            handleZXingResult(result.getText())
+          }
+          if (err && err.name !== "NotFoundException") {
+            handleError(err)
+            controls.stop()
+            setScanning(false)
+          }
+        },
+      )
+    } catch (err: any) {
+      handleError(err)
+      setScanning(false)
+    }
   }
 
-  const toggleTorch = () => {
-    setTorchOn(!torchOn)
+  const stopScan = () => {
+    if (codeReaderRef.current) {
+      codeReaderRef.current.reset()
+      codeReaderRef.current = null
+    }
+    setScanning(false)
   }
 
   return (
@@ -130,8 +85,8 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
           QR Code Scanner
         </CardTitle>
         <div className="flex items-center justify-center gap-2">
-          <Badge variant={isCameraOn ? "default" : "secondary"} className="text-xs">
-            {isCameraOn ? "Active" : "Inactive"}
+          <Badge variant={scanning ? "default" : "secondary"} className="text-xs">
+            {scanning ? "Active" : "Inactive"}
           </Badge>
         </div>
       </CardHeader>
@@ -140,24 +95,18 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
-            {error.includes('No camera found') || error.toLowerCase().includes('permission') ? (
-              <Button size="sm" className="mt-2" onClick={enumerateDevices}>
-                Retry Camera Access
-              </Button>
-            ) : null}
           </Alert>
         )}
 
         <div className="relative aspect-square bg-muted rounded-lg overflow-hidden">
-          {isCameraOn && !error ? (
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              className="w-full h-full object-cover rounded-lg"
-              style={{ background: "black" }}
-            />
-          ) : (
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            className="w-full h-full object-cover rounded-lg"
+            style={{ background: "black", display: scanning ? "block" : "none" }}
+          />
+          {!scanning && (
             <div className="w-full h-full flex items-center justify-center text-muted-foreground">
               <div className="text-center space-y-2">
                 <CameraOff className="w-12 h-12 mx-auto" />
@@ -167,7 +116,7 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
           )}
 
           {/* Scanning overlay */}
-          {isCameraOn && (
+          {scanning && (
             <div className="absolute inset-0 pointer-events-none">
               <div className="absolute inset-4 border-2 border-primary rounded-lg">
                 <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-primary rounded-tl-lg" />
@@ -185,8 +134,8 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
         {/* Controls */}
         <div className="flex flex-col gap-2 justify-center items-center">
           <div className="w-full flex gap-2">
-            <Button variant={isCameraOn ? "destructive" : "default"} size="sm" onClick={toggleCamera} className="flex-1">
-              {isCameraOn ? (
+            <Button variant={scanning ? "destructive" : "default"} size="sm" onClick={scanning ? stopScan : startScan} className="flex-1">
+              {scanning ? (
                 <>
                   <CameraOff className="w-4 h-4 mr-2" />
                   Stop Camera
@@ -198,27 +147,7 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
                 </>
               )}
             </Button>
-            {isCameraOn && (
-              <Button variant="outline" size="sm" onClick={toggleTorch} disabled={!isCameraOn}>
-                {torchOn ? <FlashlightOff className="w-4 h-4" /> : <Flashlight className="w-4 h-4" />}
-              </Button>
-            )}
           </div>
-          {/* Camera selection dropdown */}
-          {devices.length > 1 && (
-            <select
-              className="mt-2 border rounded px-2 py-1 text-sm"
-              value={selectedDeviceId || ''}
-              onChange={e => setSelectedDeviceId(e.target.value)}
-              disabled={!isCameraOn}
-            >
-              {devices.map(device => (
-                <option key={device.deviceId} value={device.deviceId}>
-                  {device.label || `Camera ${device.deviceId}`}
-                </option>
-              ))}
-            </select>
-          )}
         </div>
 
         <div className="text-center text-sm text-muted-foreground">
