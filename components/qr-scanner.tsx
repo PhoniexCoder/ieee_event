@@ -1,12 +1,14 @@
 "use client"
 
-import { useState, useCallback, useRef, useEffect } from "react"
-import { BrowserQRCodeReader } from "@zxing/browser"
+import { useState, useEffect } from "react"
+import { Scanner } from "@yudiel/react-qr-scanner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Camera, CameraOff, Flashlight, FlashlightOff } from "lucide-react"
+import { Camera, CameraOff, Wifi, WifiOff } from "lucide-react"
+import { offlineStorage } from "@/lib/offline-storage"
+import { useToast } from "@/hooks/use-toast"
 
 interface QRScannerProps {
   onScan: (result: string) => void
@@ -14,68 +16,57 @@ interface QRScannerProps {
 }
 
 export function QRScannerComponent({ onScan, onError }: QRScannerProps) {
+  const { toast } = useToast()
+  const [permissionDenied, setPermissionDenied] = useState(false)
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [error, setError] = useState<string | null>(null)
-  const [lastScan, setLastScan] = useState<string | null>(null)
-  const [scanning, setScanning] = useState(false)
-  const videoRef = useRef<HTMLVideoElement | null>(null)
-  const codeReaderRef = useRef<BrowserQRCodeReader | null>(null)
 
-  const handleZXingResult = useCallback(
-    (result: string) => {
-      if (result && result !== lastScan) {
-        console.log("[] QR Code scanned:", result)
-        setLastScan(result)
-        onScan(result)
-        setTimeout(() => setLastScan(null), 2000)
-      }
-    },
-    [onScan, lastScan],
-  )
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
-  const handleError = useCallback(
-    (error: any) => {
-      console.error("[] QR Scanner error:", error)
-      const errorMessage = `[${error.name}] ${error.message}` || "Camera access failed"
-      setError(errorMessage)
-      onError?.(errorMessage)
-    },
-    [onError],
-  )
-
-  const startScan = async () => {
-    setError(null)
-    setScanning(true)
-    codeReaderRef.current = new BrowserQRCodeReader()
+  const handleScan = async (detectedCodes: IDetectedBarcode[]) => {
+    if (detectedCodes.length === 0) return;
+    const qrText = detectedCodes[0].rawValue;
     try {
-      await codeReaderRef.current.decodeFromVideoDevice(
-        undefined,
-        videoRef.current!,
-        (result, err, controls) => {
-          if (result) {
-            controls.stop()
-            setScanning(false)
-            handleZXingResult(result.getText())
-          }
-          if (err && err.name !== "NotFoundException") {
-            handleError(err)
-            controls.stop()
-            setScanning(false)
-          }
-        },
-      )
-    } catch (err: any) {
-      handleError(err)
-      setScanning(false)
+      if (isOnline) {
+        onScan(qrText)
+      } else {
+        await offlineStorage.storeAttendance({
+          studentId: qrText,
+          studentName: 'Offline Scan',
+          timestamp: new Date().toISOString()
+        })
+        toast({
+          title: "Scan saved offline",
+          description: "Attendance will sync when connection is restored",
+        })
+      }
+    } catch (error) {
+      onError?.(error instanceof Error ? error.message : 'Failed to process scan')
     }
   }
 
-  const stopScan = () => {
-    if (codeReaderRef.current) {
-      codeReaderRef.current.reset()
-      codeReaderRef.current = null
+  const handleError = (error: unknown) => {
+    if (error instanceof Error) {
+      if (error.name === 'NotAllowedError') {
+        setPermissionDenied(true)
+      }
+      onError?.(error.message)
+    } else {
+      onError?.('Unknown scanner error')
     }
-    setScanning(false)
   }
+
 
   return (
     <Card className="w-full max-w-md mx-auto">
@@ -85,8 +76,8 @@ export function QRScannerComponent({ onScan, onError }: QRScannerProps) {
           QR Code Scanner
         </CardTitle>
         <div className="flex items-center justify-center gap-2">
-          <Badge variant={scanning ? "default" : "secondary"} className="text-xs">
-            {scanning ? "Active" : "Inactive"}
+          <Badge variant="default" className="text-xs">
+            Active
           </Badge>
         </div>
       </CardHeader>
@@ -99,61 +90,71 @@ export function QRScannerComponent({ onScan, onError }: QRScannerProps) {
         )}
 
         <div className="relative aspect-square bg-muted rounded-lg overflow-hidden">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            className="w-full h-full object-cover rounded-lg"
-            style={{ background: "black", display: scanning ? "block" : "none" }}
-          />
-          {!scanning && (
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-              <div className="text-center space-y-2">
-                <CameraOff className="w-12 h-12 mx-auto" />
-                <p className="text-sm">Camera is off</p>
-              </div>
+          {permissionDenied ? (
+            <div className="h-full flex flex-col items-center justify-center p-4 text-center">
+              <CameraOff className="w-12 h-12 text-destructive mb-4" />
+              <p className="text-destructive font-medium mb-4">
+                Camera access required
+              </p>
+              <Button
+                variant="secondary"
+                onClick={() => setPermissionDenied(false)}
+              >
+                Retry Camera Access
+              </Button>
             </div>
+          ) : (
+            <Scanner
+              onScan={(codes) => handleScan(codes)}
+              onError={(error) => handleError(error)}
+              className="w-full h-full bg-black rounded-lg"
+              videoStyle={{
+                objectFit: 'cover'
+              }}
+              constraints={{
+                facingMode: 'environment',
+                aspectRatio: 1
+              }}
+            />
           )}
+          
+          {/* Scanning overlay */}
+          <div className="absolute inset-0 pointer-events-none">
+            <div className="absolute inset-4 border-2 border-primary rounded-lg">
+              <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-primary rounded-tl-lg" />
+              <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-primary rounded-tr-lg" />
+              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-primary rounded-bl-lg" />
+              <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-primary rounded-br-lg" />
+            </div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-full h-0.5 bg-primary/50 animate-pulse" />
+            </div>
+          </div>
+
+          {/* Online/Offline Status */}
+          <div className="absolute top-2 right-2 flex items-center gap-2 text-sm">
+            <div className={`flex items-center gap-1 ${isOnline ? 'text-green-400' : 'text-yellow-400'}`}>
+              {isOnline ? (
+                <Wifi className="w-4 h-4" />
+              ) : (
+                <WifiOff className="w-4 h-4" />
+              )}
+              <span>{isOnline ? 'Online' : 'Offline'}</span>
+            </div>
+          </div>
 
           {/* Scanning overlay */}
-          {scanning && (
-            <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute inset-4 border-2 border-primary rounded-lg">
-                <div className="absolute top-0 left-0 w-6 h-6 border-t-4 border-l-4 border-primary rounded-tl-lg" />
-                <div className="absolute top-0 right-0 w-6 h-6 border-t-4 border-r-4 border-primary rounded-tr-lg" />
-                <div className="absolute bottom-0 left-0 w-6 h-6 border-b-4 border-l-4 border-primary rounded-bl-lg" />
-                <div className="absolute bottom-0 right-0 w-6 h-6 border-b-4 border-r-4 border-primary rounded-br-lg" />
-              </div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-full h-0.5 bg-primary/50 animate-pulse" />
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Controls */}
-        <div className="flex flex-col gap-2 justify-center items-center">
-          <div className="w-full flex gap-2">
-            <Button variant={scanning ? "destructive" : "default"} size="sm" onClick={scanning ? stopScan : startScan} className="flex-1">
-              {scanning ? (
-                <>
-                  <CameraOff className="w-4 h-4 mr-2" />
-                  Stop Camera
-                </>
-              ) : (
-                <>
-                  <Camera className="w-4 h-4 mr-2" />
-                  Start Camera
-                </>
-              )}
-            </Button>
-          </div>
+        <div className="text-center text-sm text-muted-foreground">
+          <p>Scan IEEE student QR codes</p>
+          <p className="text-xs mt-1">{isOnline ? 
+            'Scans will process immediately' : 
+            'Scans are being stored offline'}
+          </p>
         </div>
 
-        <div className="text-center text-sm text-muted-foreground">
-          <p>Position the QR code within the frame</p>
-          <p className="text-xs mt-1">Scanning will happen automatically</p>
-        </div>
       </CardContent>
     </Card>
   )

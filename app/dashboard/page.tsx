@@ -317,7 +317,7 @@ export default function DashboardPage() {
 
         {/* QR Scanner */}
         <div className="flex justify-center">
-          <QRScannerComponent onScan={handleQRScan} onError={handleScanError} isScanning={true} />
+          <QRScannerComponent onScan={handleQRScan} onError={handleScanError} />
         </div>
 
         {recentLogs.length > 0 && (
