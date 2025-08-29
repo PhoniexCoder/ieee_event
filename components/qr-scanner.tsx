@@ -82,7 +82,7 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
       const codeReader = new BrowserMultiFormatReader();
       codeReaderRef.current = codeReader;
 
-      navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: selectedDeviceId } } })
+      navigator.mediaDevices.getUserMedia({ video: { deviceId: selectedDeviceId } })
         .then(stream => {
           if (videoRef.current) {
             videoRef.current.srcObject = stream;
