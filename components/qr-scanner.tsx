@@ -40,8 +40,8 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
 
   const handleError = useCallback(
     (error: any) => {
-      const errorMessage = error?.message || "Camera access failed"
       console.error("[] QR Scanner error:", error)
+      const errorMessage = `[${error.name}] ${error.message}` || "Camera access failed"
       setError(errorMessage)
       onError?.(errorMessage)
     },
