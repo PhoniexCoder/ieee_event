@@ -99,12 +99,16 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
       })();
       return () => {
         stopped = true;
-  codeReaderRef.current = null;
+        if (codeReaderRef.current) {
+          codeReaderRef.current.reset();
+          codeReaderRef.current = null;
+        }
       };
     }
     // Stop camera if not on
     if ((!isCameraOn || !selectedDeviceId) && codeReaderRef.current) {
-  codeReaderRef.current = null;
+      codeReaderRef.current.reset();
+      codeReaderRef.current = null;
     }
   }, [isCameraOn, selectedDeviceId, handleZXingResult, handleError]);
 
