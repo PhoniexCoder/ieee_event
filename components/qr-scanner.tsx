@@ -81,34 +81,35 @@ export function QRScannerComponent({ onScan, onError, isScanning = true }: QRSca
     if (isCameraOn && videoRef.current && selectedDeviceId) {
       const codeReader = new BrowserMultiFormatReader();
       codeReaderRef.current = codeReader;
-      let stopped = false;
-      (async () => {
-        try {
-          codeReader.decodeFromVideoDevice(selectedDeviceId, videoRef.current!, (res, err) => {
-            if (stopped) return;
-            if (res) {
-              handleZXingResult(res.getText());
-            }
-            if (err && err.name !== "NotFoundException") {
-              handleError(err);
-            }
-          });
-        } catch (e: any) {
-          setError(e.message || "Camera error");
-        }
-      })();
+
+      navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: selectedDeviceId } } })
+        .then(stream => {
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.onloadedmetadata = () => {
+              codeReader.decodeFromVideoElement(videoRef.current!, (result, error) => {
+                if (result) {
+                  handleZXingResult(result.getText());
+                }
+                if (error && error.name !== "NotFoundException") {
+                  handleError(error);
+                }
+              });
+            };
+          }
+        })
+        .catch(err => handleError(err));
+
       return () => {
-        stopped = true;
         if (codeReaderRef.current) {
           codeReaderRef.current.reset();
           codeReaderRef.current = null;
         }
+        if (videoRef.current && videoRef.current.srcObject) {
+          (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
+          videoRef.current.srcObject = null;
+        }
       };
-    }
-    // Stop camera if not on
-    if ((!isCameraOn || !selectedDeviceId) && codeReaderRef.current) {
-      codeReaderRef.current.reset();
-      codeReaderRef.current = null;
     }
   }, [isCameraOn, selectedDeviceId, handleZXingResult, handleError]);
 

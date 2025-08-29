@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useRef, useState, useEffect } from 'react';
@@ -37,26 +36,49 @@ export default function QRCamera() {
   // Start/stop scanning when cameraOn or selectedDeviceId changes
   useEffect(() => {
     if (!cameraOn || !selectedDeviceId || !videoRef.current) return;
+
     setStatus('Starting camera...');
     setScanning(true);
     const codeReader = new BrowserMultiFormatReader();
     codeReaderRef.current = codeReader;
-    codeReader.decodeFromVideoDevice(selectedDeviceId, videoRef.current, (res, err) => {
-      if (res) {
-        setStatus('QR code found: ' + res.getText());
-        setResult(res.getText());
+
+    navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: selectedDeviceId } } })
+      .then(stream => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.onloadedmetadata = () => {
+            codeReader.decodeFromVideoElement(videoRef.current!, (result, error) => {
+              if (result) {
+                setStatus('QR code found: ' + result.getText());
+                setResult(result.getText());
+                setScanning(false);
+                setCameraOn(false);
+              }
+              if (error && error.name !== "NotFoundException") {
+                setError(error.message);
+                setStatus('Camera error: ' + error.message);
+                setScanning(false);
+                setCameraOn(false);
+              }
+            });
+          };
+        }
+      })
+      .catch(err => {
+        setError(err.message || 'Failed to get camera stream');
         setScanning(false);
-  setCameraOn(false);
-      }
-      if (err && err.message) {
-        setError(err.message);
-        setStatus('Camera error: ' + err.message);
-        setScanning(false);
-  setCameraOn(false);
-      }
-    });
+        setCameraOn(false);
+      });
+
     return () => {
-  // Cleanup handled by effect/state
+      if (codeReaderRef.current) {
+        codeReaderRef.current.reset();
+        codeReaderRef.current = null;
+      }
+      if (videoRef.current && videoRef.current.srcObject) {
+        (videoRef.current.srcObject as MediaStream).getTracks().forEach(track => track.stop());
+        videoRef.current.srcObject = null;
+      }
     };
   }, [cameraOn, selectedDeviceId]);
 
