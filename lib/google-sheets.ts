@@ -143,6 +143,7 @@ type SheetMapping = {
   emailHeader?: string;
   rollHeader?: string;
   sectionHeader?: string;
+  eventNameHeader?: string;
 };
 
 export async function resolveMapping(spreadsheetId: string, sheetTitle: string): Promise<{ mapping: SheetMapping; indexMap: Map<string, number> }>{
@@ -177,10 +178,11 @@ export async function resolveMapping(spreadsheetId: string, sheetTitle: string):
     qrHeader: requiredQrHeader,
     qrCodeHeader: indexMap.has("QR_CODE") ? "QR_CODE" : undefined,
     attendanceHeader: saved?.attendanceHeader || findHeader(["Attendance", "Confirmation", "Checked In", "Check-In", "Checkin"]) || "Confirmation",
-    nameHeader: saved?.nameHeader || findHeader(["Full Name", "Your Name", "Name"]) || "Full Name",
+    nameHeader: saved?.nameHeader || (indexMap.has("Full Name") ? "Full Name" : (findHeader(["Your Name", "Name"]) || undefined)),
     emailHeader: saved?.emailHeader || findHeader(["Email address", "Email", "Email ID"]) || "Email address",
     rollHeader: saved?.rollHeader || findHeader(["University Roll No.", "Student ID", "Roll No"]) || "University Roll No.",
     sectionHeader: saved?.sectionHeader || findHeader(["Course", "Year", "Section"]) || "Course",
+    eventNameHeader: saved?.eventNameHeader || findHeader(["Event Name", "Event", "Event Title"]) || undefined,
   };
   return { mapping: inferred, indexMap };
 }

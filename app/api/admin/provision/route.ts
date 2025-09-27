@@ -53,7 +53,7 @@ async function runProvision(req: Request) {
     const { spreadsheetId, activeSheetTitle } = await getSpreadsheetConfig();
     const { mapping, indexMap } = await resolveMapping(spreadsheetId, activeSheetTitle);
 
-    const neededHeaders = [mapping.emailHeader, mapping.nameHeader, mapping.qrHeader, mapping.qrCodeHeader]
+    const neededHeaders = [mapping.emailHeader, mapping.nameHeader, mapping.eventNameHeader, mapping.qrHeader, mapping.qrCodeHeader]
       .filter(Boolean) as string[];
     const idxs = neededHeaders.map(h => indexMap.get(h) ?? -1).filter(i => i >= 0).sort((a,b)=>a-b);
     if (idxs.length === 0) {
@@ -78,13 +78,14 @@ async function runProvision(req: Request) {
     const setIdx = (header: string) => (indexMap.get(header)! - offset);
     const getQrCodeUrl = (code: string) => `https://quickchart.io/qr?size=220&text=${encodeURIComponent(code)}`;
 
-    type Job = { rowIndex: number; email: string; name?: string; code: string };
+  type Job = { rowIndex: number; email: string; name?: string; eventName?: string; code: string };
     const jobs: Job[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i] || [];
-      const email = getVal(row, mapping.emailHeader);
-      const name = getVal(row, mapping.nameHeader);
+  const email = getVal(row, mapping.emailHeader);
+  const name = getVal(row, mapping.nameHeader);
+  const eventName = mapping.eventNameHeader ? getVal(row, mapping.eventNameHeader) : activeSheetTitle;
       const qrId = getVal(row, mapping.qrHeader);
       const qrCode = mapping.qrCodeHeader ? getVal(row, mapping.qrCodeHeader) : "";
       if (email && !qrId) {
@@ -94,7 +95,7 @@ async function runProvision(req: Request) {
         if (mapping.qrCodeHeader) {
           row[setIdx(mapping.qrCodeHeader)] = getQrCodeUrl(code);
         }
-        jobs.push({ rowIndex: i + 2, email, name, code });
+  jobs.push({ rowIndex: i + 2, email, name, eventName, code });
       }
     }
 
@@ -115,7 +116,7 @@ async function runProvision(req: Request) {
     let emailed = 0;
     for (const j of jobs) {
       try {
-        await sendQrEmail(j.email, j.name, j.code);
+        await sendQrEmail(j.email, j.name, j.code, j.eventName);
         emailed++;
       } catch (e) {
         console.error("[provision] email failed for", j.email, e);
