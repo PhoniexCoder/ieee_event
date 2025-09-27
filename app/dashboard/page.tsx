@@ -5,6 +5,8 @@ import { VolunteerAccessCode } from "@/components/volunteer-access-code"
 import { useSession, signOut } from "next-auth/react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -15,6 +17,7 @@ import { DashboardSkeleton } from "@/components/loading-skeleton"
 import { offlineStorage } from "@/lib/offline-storage"
 import { useToast } from "@/hooks/use-toast"
 import { Users, UserCheck, UserX, QrCode, LogOut, Clock, CheckCircle, AlertCircle, RefreshCw } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface AttendanceStats {
   totalStudents: number
@@ -43,6 +46,7 @@ export default function DashboardPage() {
   const [scanResult, setScanResult] = useState<string | null>(null)
   const [scanStatus, setScanStatus] = useState<"idle" | "success" | "error" | "duplicate">("idle")
   const [scanMessage, setScanMessage] = useState<string>("")
+  const isAdmin = ((session as any)?.user?.role === "admin")
   const [stats, setStats] = useState<AttendanceStats>({
     totalStudents: 0,
     presentStudents: 0,
@@ -52,6 +56,12 @@ export default function DashboardPage() {
   const [recentLogs, setRecentLogs] = useState<AttendanceLog[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isInitialLoading, setIsInitialLoading] = useState(true)
+  // Admin: Spreadsheet ID state
+  const [spreadsheetId, setSpreadsheetId] = useState("")
+  const [isSavingSpreadsheet, setIsSavingSpreadsheet] = useState(false)
+  const [sheets, setSheets] = useState<{ title: string; sheetId: number; index: number }[]>([])
+  const [activeSheet, setActiveSheet] = useState<{ title?: string; sheetId?: number } | null>(null)
+  const [isSavingActiveSheet, setIsSavingActiveSheet] = useState(false)
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -64,7 +74,7 @@ export default function DashboardPage() {
 
   if (
     status === "authenticated" &&
-    session?.user?.role === "volunteer" &&
+    !isAdmin &&
     !accessGranted
   ) {
     content = <VolunteerAccessCode onSuccess={() => setAccessGranted(true)} />;
@@ -104,6 +114,39 @@ export default function DashboardPage() {
       loadInitialData()
     }
   }, [status, fetchStats, fetchRecentLogs])
+
+  // Admin: load Spreadsheet ID
+  useEffect(() => {
+    const loadSpreadsheetId = async () => {
+      if (!isAdmin) return;
+      try {
+        const res = await fetch("/api/admin/spreadsheet");
+        if (res.ok) {
+          const data = await res.json();
+          setSpreadsheetId(data.spreadsheetId || "");
+        }
+      } catch (e) {
+        // no-op
+      }
+    };
+    if (status === "authenticated") loadSpreadsheetId();
+  }, [status, isAdmin])
+
+  // Admin: load available sheets and active selection
+  useEffect(() => {
+    const loadSheets = async () => {
+      if (!isAdmin) return;
+      try {
+        const res = await fetch("/api/admin/sheets");
+        if (res.ok) {
+          const data = await res.json();
+          setSheets(data.sheets || []);
+          setActiveSheet(data.active || null);
+        }
+      } catch {}
+    };
+    if (status === "authenticated") loadSheets();
+  }, [status, isAdmin])
 
   const handleQRScan = useCallback(
     async (qrData: string) => {
@@ -184,6 +227,30 @@ export default function DashboardPage() {
     setScanMessage(`Scanner error: ${error}`)
   }, [])
 
+  // Admin: save Spreadsheet ID
+  const handleSaveSpreadsheetId = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingSpreadsheet(true);
+    try {
+      const res = await fetch("/api/admin/spreadsheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spreadsheetId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast({ title: "Saved", description: "Spreadsheet ID updated." });
+        await fetchStats();
+      } else {
+        toast({ title: "Error", description: data.error || "Failed to save.", variant: "destructive" });
+      }
+    } catch (e) {
+      toast({ title: "Error", description: "Network error.", variant: "destructive" });
+    } finally {
+      setIsSavingSpreadsheet(false);
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut({ callbackUrl: "/" })
   }
@@ -230,7 +297,7 @@ export default function DashboardPage() {
               </div>
               <div>
                 <h1 className="text-xl font-bold">IEEE SB GEHU</h1>
-                <p className="text-sm text-muted-foreground">Attendance Dashboard</p>
+                <p className="text-sm text-muted-foreground">{isAdmin ? "Admin Dashboard" : "Attendance Dashboard"}</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -241,7 +308,7 @@ export default function DashboardPage() {
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-medium">{session?.user?.name}</p>
                 <Badge variant="secondary" className="text-xs">
-                  {session?.user?.role === "admin" ? "Admin" : "Volunteer"}
+                  {((session?.user as any)?.role === "admin") ? "Admin" : "Volunteer"}
                 </Badge>
               </div>
               <Button variant="outline" size="sm" onClick={handleSignOut}>
@@ -303,7 +370,7 @@ export default function DashboardPage() {
           </Card>
         </div>
 
-        {scanStatus !== "idle" && (
+        {!isAdmin && scanStatus !== "idle" && (
           <Alert variant={scanStatus === "success" ? "default" : "destructive"}>
             <div className="flex items-center gap-2">
               {scanStatus === "success" && <CheckCircle className="w-4 h-4" />}
@@ -314,11 +381,86 @@ export default function DashboardPage() {
           </Alert>
         )}
 
+        {/* QR Scanner - hidden for Admins */}
+        {!isAdmin && (
+          <div className="flex justify-center">
+            <QRScannerComponent onScan={handleQRScan} onError={handleScanError} />
+          </div>
+        )}
 
-        {/* QR Scanner */}
-        <div className="flex justify-center">
-          <QRScannerComponent onScan={handleQRScan} onError={handleScanError} />
-        </div>
+        {/* Admin-only: Spreadsheet ID Config */}
+        {isAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Spreadsheet Configuration</CardTitle>
+              <CardDescription>Set the Google Spreadsheet ID used for attendance</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form className="space-y-3" onSubmit={handleSaveSpreadsheetId}>
+                <div className="space-y-2">
+                  <Label htmlFor="spreadsheetId">Spreadsheet ID</Label>
+                  <Input
+                    id="spreadsheetId"
+                    value={spreadsheetId}
+                    onChange={(e) => setSpreadsheetId(e.target.value)}
+                    placeholder="e.g. 1abcDEF..."
+                    required
+                  />
+                </div>
+                <Button type="submit" disabled={isSavingSpreadsheet}>
+                  {isSavingSpreadsheet ? "Saving..." : "Save"}
+                </Button>
+              </form>
+              {sheets.length > 0 && (
+                <div className="mt-6 space-y-2">
+                  <Label>Active Sheet (tab)</Label>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={activeSheet?.title || undefined}
+                      onValueChange={(val) => setActiveSheet((prev) => ({ sheetId: prev?.sheetId, title: val }))}
+                    >
+                      <SelectTrigger className="w-72">
+                        <SelectValue placeholder="Select a sheet" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sheets.map((s) => (
+                          <SelectItem key={s.sheetId} value={s.title}>{s.title}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={isSavingActiveSheet || !activeSheet?.title}
+                      onClick={async () => {
+                        setIsSavingActiveSheet(true);
+                        try {
+                          const selected = sheets.find((s) => s.title === activeSheet?.title);
+                          const res = await fetch("/api/admin/sheets", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ sheetId: selected?.sheetId, title: selected?.title }),
+                          });
+                          if (res.ok) {
+                            toast({ title: "Active sheet saved" });
+                            await fetchStats();
+                          } else {
+                            const data = await res.json();
+                            toast({ title: "Error", description: data.error || "Failed to save.", variant: "destructive" });
+                          }
+                        } finally {
+                          setIsSavingActiveSheet(false);
+                        }
+                      }}
+                    >
+                      {isSavingActiveSheet ? "Saving..." : "Set Active"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {recentLogs.length > 0 && (
           <Card>
@@ -351,19 +493,21 @@ export default function DashboardPage() {
           </Card>
         )}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">How to Use</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>1. Point your camera at a student's QR code</p>
-            <p>2. The system will automatically scan and update Google Sheets</p>
-            <p>3. Green confirmation means successful attendance marking</p>
-            <p>4. Duplicate scans are automatically prevented</p>
-            <p>5. All actions are logged for audit purposes</p>
-            <p>6. Works offline - data syncs automatically when reconnected</p>
-          </CardContent>
-        </Card>
+        {!isAdmin && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">How to Use</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-muted-foreground">
+              <p>1. Point your camera at a student's QR code</p>
+              <p>2. The system will automatically scan and update Google Sheets</p>
+              <p>3. Green confirmation means successful attendance marking</p>
+              <p>4. Duplicate scans are automatically prevented</p>
+              <p>5. All actions are logged for audit purposes</p>
+              <p>6. Works offline - data syncs automatically when reconnected</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
       );

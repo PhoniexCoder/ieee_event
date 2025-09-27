@@ -9,5 +9,11 @@
         }
       ]
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/admin/provision?secret=6d2e5f0a7c4d4a31b7d9a0b2f4f8c1e0",
+      "schedule": "0 * * * *"
+    }
   ]
 }

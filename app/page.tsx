@@ -10,6 +10,9 @@ import { QrCode, Users, Shield, Smartphone } from "lucide-react"
 
 export default function HomePage() {
   const [isLoading, setIsLoading] = useState(false)
+  const [adminUsername, setAdminUsername] = useState("")
+  const [adminPassword, setAdminPassword] = useState("")
+  const [adminError, setAdminError] = useState("")
   const { data: session, status } = useSession()
   const router = useRouter()
 
@@ -25,6 +28,25 @@ export default function HomePage() {
     } catch (error) {
       setIsLoading(false)
     }
+  }
+
+  const handleAdminSignIn = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAdminError("")
+    setIsLoading(true)
+    const res = await signIn("credentials", {
+      redirect: false,
+      username: adminUsername,
+      password: adminPassword,
+      callbackUrl: "/admin",
+    })
+    setIsLoading(false)
+    if (!res || res.error) {
+      setAdminError("Invalid admin credentials")
+      return
+    }
+    // If success, either res.url is set or session will change and redirect happens
+    router.push("/admin")
   }
 
   if (status === "loading") {
@@ -80,7 +102,7 @@ export default function HomePage() {
           </Card>
         </div>
 
-        {/* Sign In */}
+        {/* Volunteer Sign In (Google) */}
         <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
           <CardHeader className="text-center">
             <CardTitle className="text-xl">Welcome Back</CardTitle>
@@ -117,6 +139,40 @@ export default function HomePage() {
                 </div>
               )}
             </Button>
+          </CardContent>
+        </Card>
+
+        {/* Admin Sign In (Static Credentials) */}
+        <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">Admin Sign In</CardTitle>
+            <CardDescription>Use admin username and password</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="space-y-3" onSubmit={handleAdminSignIn}>
+              <input
+                type="text"
+                placeholder="Admin username"
+                className="w-full rounded border px-3 py-2 bg-background"
+                value={adminUsername}
+                onChange={(e) => setAdminUsername(e.target.value)}
+                required
+              />
+              <input
+                type="password"
+                placeholder="Admin password"
+                className="w-full rounded border px-3 py-2 bg-background"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                required
+              />
+              {adminError && (
+                <p className="text-sm text-destructive">{adminError}</p>
+              )}
+              <Button type="submit" disabled={isLoading} className="w-full">
+                {isLoading ? "Signing in..." : "Sign in as Admin"}
+              </Button>
+            </form>
           </CardContent>
         </Card>
 
