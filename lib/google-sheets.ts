@@ -182,7 +182,12 @@ export async function resolveMapping(spreadsheetId: string, sheetTitle: string):
     emailHeader: saved?.emailHeader || findHeader(["Email address", "Email", "Email ID"]) || "Email address",
     rollHeader: saved?.rollHeader || findHeader(["University Roll No.", "Student ID", "Roll No"]) || "University Roll No.",
     sectionHeader: saved?.sectionHeader || findHeader(["Course", "Year", "Section"]) || "Course",
-    eventNameHeader: saved?.eventNameHeader || findHeader(["Event Name", "Event", "Event Title"]) || undefined,
+    eventNameHeader: saved?.eventNameHeader || findHeader([
+      "Which event(s) would you like to register for",
+      "Event Name",
+      "Event Title",
+      "Event"
+    ]) || undefined,
   };
   return { mapping: inferred, indexMap };
 }
