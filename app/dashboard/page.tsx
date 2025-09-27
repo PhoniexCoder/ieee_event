@@ -62,6 +62,7 @@ export default function DashboardPage() {
   const [sheets, setSheets] = useState<{ title: string; sheetId: number; index: number }[]>([])
   const [activeSheet, setActiveSheet] = useState<{ title?: string; sheetId?: number } | null>(null)
   const [isSavingActiveSheet, setIsSavingActiveSheet] = useState(false)
+  const [isProvisioning, setIsProvisioning] = useState(false)
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -455,6 +456,36 @@ export default function DashboardPage() {
                     >
                       {isSavingActiveSheet ? "Saving..." : "Set Active"}
                     </Button>
+                  </div>
+                </div>
+              )}
+              {isAdmin && (
+                <div className="mt-6 space-y-2">
+                  <Label>Provision QR Codes & Send Emails</Label>
+                  <div className="flex items-center gap-3">
+                    <Button
+                      onClick={async () => {
+                        setIsProvisioning(true);
+                        try {
+                          const res = await fetch("/api/admin/provision", { method: "POST" });
+                          const data = await res.json();
+                          if (res.ok) {
+                            const { updated = 0, emailed = 0 } = data || {};
+                            toast({ title: "Provisioned", description: `Generated ${updated} QR codes and emailed ${emailed} participants.` });
+                          } else {
+                            toast({ title: "Provision failed", description: data?.error || "Unknown error", variant: "destructive" });
+                          }
+                        } catch (e) {
+                          toast({ title: "Network error", description: "Could not reach provisioning endpoint.", variant: "destructive" });
+                        } finally {
+                          setIsProvisioning(false);
+                        }
+                      }}
+                      disabled={isProvisioning}
+                    >
+                      {isProvisioning ? "Running..." : "Provision now"}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">Generates QR_ID for new rows and emails participants.</p>
                   </div>
                 </div>
               )}
