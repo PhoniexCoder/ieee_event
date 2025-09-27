@@ -1,12 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth/next"
-import { authOptions } from "@/lib/auth"
+import { authOptions } from "@/lib/auth-options"
 import { markStudentPresent } from "@/lib/google-sheets"
 
 export async function POST(request: NextRequest) {
   let response;
   try {
-  const session = await getServerSession(authOptions);
+  const session: any = await getServerSession(authOptions as any);
 
     if (!session?.user) {
       response = NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,8 +17,8 @@ export async function POST(request: NextRequest) {
       } else {
         const result = await markStudentPresent(
           qrId,
-          session.user.email || "unknown",
-          session.user.name || "Unknown Volunteer",
+          session.user?.email || "unknown",
+          session.user?.name || "Unknown Volunteer",
         );
         if (result.success) {
           response = NextResponse.json({

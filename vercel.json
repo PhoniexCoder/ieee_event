@@ -9,5 +9,11 @@
         }
       ]
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/admin/provision?secret=REPLACED",
+      "schedule": "0 * * * *"
+    }
   ]
 }

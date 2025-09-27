@@ -19,3 +19,7 @@ declare module "next-auth/jwt" {
     role?: string
   }
 }
+
+declare global {
+  var _mongoClientPromise: Promise<import('mongodb').MongoClient>;
+}
