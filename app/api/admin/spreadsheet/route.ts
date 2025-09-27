@@ -10,9 +10,9 @@ export async function GET() {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
     const client = await clientPromise;
-  const db = client.db(process.env.MONGODB_DB_NAME || 'ieee_attendance');
+    const db = client.db(process.env.MONGODB_DB_NAME || 'ieee_attendance');
     const config = await db.collection("config").findOne({ name: "spreadsheetId" });
-    return NextResponse.json({ spreadsheetId: config ? config.value : null });
+    return NextResponse.json({ spreadsheetId: config ? (config as any).value : null });
   } catch (error) {
     console.error("Error getting spreadsheetId:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

@@ -11,10 +11,9 @@ export async function getSpreadsheetConfig(): Promise<{
   const db = client.db(process.env.MONGODB_DB_NAME || 'ieee_attendance');
   const configColl = db.collection("config");
   const ssDoc = await configColl.findOne<{ value: string }>({ name: "spreadsheetId" });
-  const envId = process.env.GOOGLE_SHEETS_ID;
-  const spreadsheetId = ssDoc?.value || envId;
+  const spreadsheetId = ssDoc?.value;
   if (!spreadsheetId) {
-    throw new Error("Google Spreadsheet ID not found. Please set it in the admin dashboard or define GOOGLE_SHEETS_ID.");
+    throw new Error("Google Spreadsheet ID not found. Please set it in the Admin Dashboard (stored in MongoDB).");
   }
 
   // Attempt to get persisted active sheet
@@ -24,6 +23,7 @@ export async function getSpreadsheetConfig(): Promise<{
   if (activeDoc?.title) activeTitle = activeDoc.title;
   if (typeof activeDoc?.sheetId === "number") activeId = activeDoc.sheetId;
 
+  // Attempt to get persisted active sheet
   // If not set, choose a default from spreadsheet metadata (prefer a sheet with 'Form responses' in title; otherwise first sheet)
   if (!activeTitle || typeof activeId !== "number") {
     const sheetsApi = await getGoogleSheetsClient();
@@ -237,8 +237,10 @@ export async function getTotalStudents(): Promise<number> {
     const sheets = await getGoogleSheetsClient();
     const { spreadsheetId, activeSheetTitle } = await getSpreadsheetConfig();
     const { mapping, indexMap } = await resolveMapping(spreadsheetId, activeSheetTitle);
-    const qrIdx = indexMap.get(mapping.qrHeader) ?? 0; // fallback to first column if missing
-    const col = colIndexToA1(qrIdx);
+    // Prefer counting by a reliably filled column (name or email), fallback to QR
+    const countHeader = mapping.nameHeader || mapping.emailHeader || mapping.qrHeader;
+    const countIdx = indexMap.get(countHeader) ?? 0;
+    const col = colIndexToA1(countIdx);
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: `${activeSheetTitle}!${col}2:${col}1000`,
@@ -437,20 +439,22 @@ export async function getAttendanceStats(): Promise<{
     const { spreadsheetId, activeSheetTitle } = await getSpreadsheetConfig();
     const { mapping, indexMap } = await resolveMapping(spreadsheetId, activeSheetTitle);
     const attIdx = indexMap.get(mapping.attendanceHeader) ?? 0;
-    const qrIdx = indexMap.get(mapping.qrHeader) ?? 0;
+    // Prefer counting by name/email so rows without QR_ID are still included
+    const countHeader = mapping.nameHeader || mapping.emailHeader || mapping.qrHeader;
+    const countIdx = indexMap.get(countHeader) ?? 0;
     const attCol = colIndexToA1(attIdx);
-    const qrCol = colIndexToA1(qrIdx);
+    const countCol = colIndexToA1(countIdx);
     const resp = await sheets.spreadsheets.values.batchGet({
       spreadsheetId,
       ranges: [
-        `${activeSheetTitle}!${qrCol}2:${qrCol}1000`,
+        `${activeSheetTitle}!${countCol}2:${countCol}1000`,
         `${activeSheetTitle}!${attCol}2:${attCol}1000`,
       ],
     });
-    const a = (resp.data.valueRanges?.[0]?.values as string[][]) || [];
-    const k = (resp.data.valueRanges?.[1]?.values as string[][]) || [];
-    const totalStudents = a.length;
-    const presentStudents = k.reduce((acc, r) => acc + (((r?.[0] || "").toString().trim().toLowerCase() === "present") ? 1 : 0), 0);
+    const countValues = (resp.data.valueRanges?.[0]?.values as string[][]) || [];
+    const attValues = (resp.data.valueRanges?.[1]?.values as string[][]) || [];
+    const totalStudents = countValues.length;
+    const presentStudents = attValues.reduce((acc, r) => acc + (((r?.[0] || "").toString().trim().toLowerCase() === "present") ? 1 : 0), 0);
     const absentStudents = totalStudents - presentStudents;
     const attendanceRate = totalStudents > 0 ? Math.round((presentStudents / totalStudents) * 100) : 0;
     return {

@@ -59,7 +59,7 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 # Google Sheets API
 GOOGLE_SERVICE_ACCOUNT_EMAIL=your-service-account@project.iam.gserviceaccount.com
 GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_PRIVATE_KEY\n-----END PRIVATE KEY-----\n"
-GOOGLE_SPREADSHEET_ID=your-google-sheets-id
+## Note: Spreadsheet ID is managed in-app and stored in MongoDB via the Admin Dashboard. No .env fallback.
 \`\`\`
 
 ## 🚀 Getting Started

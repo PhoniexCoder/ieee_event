@@ -1,7 +1,18 @@
-import { MongoClient } from 'mongodb';
+import { MongoClient, type MongoClientOptions } from 'mongodb';
+
+declare global {
+  // eslint-disable-next-line no-var
+  var _mongoClientPromise: Promise<MongoClient> | undefined;
+}
 
 const uri = process.env.MONGODB_URI || "";
-const options = {};
+
+const options: MongoClientOptions = {
+  // Fail fast instead of waiting ~30s+ on bad DNS/TLS/IP allowlist issues
+  serverSelectionTimeoutMS: 10000,
+  connectTimeoutMS: 10000,
+  retryWrites: true,
+};
 
 let client: MongoClient | undefined;
 let clientPromise: Promise<MongoClient>;
@@ -15,13 +26,19 @@ if (!uri) {
   // is not recreated on every hot reload
   if (!global._mongoClientPromise) {
     client = new MongoClient(uri, options);
-    global._mongoClientPromise = client.connect();
+    global._mongoClientPromise = client.connect().catch((err: unknown) => {
+      console.error("[MongoDB] Connection error (dev):", err);
+      throw err;
+    });
   }
-  clientPromise = global._mongoClientPromise;
+  clientPromise = global._mongoClientPromise!;
 } else {
   // In production mode, it's best to not use a global variable.
   client = new MongoClient(uri, options);
-  clientPromise = client.connect();
+  clientPromise = client.connect().catch((err: unknown) => {
+    console.error("[MongoDB] Connection error (prod):", err);
+    throw err;
+  });
 }
 
 // Export a module-scoped MongoClient promise. By doing this in a

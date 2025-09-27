@@ -144,10 +144,12 @@ export default function DashboardPage() {
           setSheets(data.sheets || []);
           setActiveSheet(data.active || null);
         }
-      } catch {}
+      } catch (e) {
+        console.error("[dashboard] Failed to load sheets:", e);
+      }
     };
     if (status === "authenticated") loadSheets();
-  }, [status, isAdmin])
+  }, [status, isAdmin, spreadsheetId])
 
   const handleQRScan = useCallback(
     async (qrData: string) => {
@@ -242,6 +244,17 @@ export default function DashboardPage() {
       if (res.ok) {
         toast({ title: "Saved", description: "Spreadsheet ID updated." });
         await fetchStats();
+        // Reload sheets after saving spreadsheet ID so dropdown populates
+        try {
+          const res2 = await fetch("/api/admin/sheets");
+          if (res2.ok) {
+            const data2 = await res2.json();
+            setSheets(data2.sheets || []);
+            setActiveSheet(data2.active || null);
+          }
+        } catch (e) {
+          console.error("[dashboard] Reload sheets failed:", e);
+        }
       } else {
         toast({ title: "Error", description: data.error || "Failed to save.", variant: "destructive" });
       }

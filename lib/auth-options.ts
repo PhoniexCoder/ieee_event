@@ -1,6 +1,5 @@
-import GoogleProvider from "next-auth/providers/google";
-import CredentialsProvider from "next-auth/providers/credentials";
-import type { NextAuthOptions } from "next-auth";
+import GoogleProvider from "next-auth/providers/google"
+import type { NextAuthOptions } from "next-auth"
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -8,28 +7,17 @@ export const authOptions: NextAuthOptions = {
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
-    CredentialsProvider({
-      name: "Credentials",
-      credentials: {
-        username: { label: "Username", type: "text" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        if (
-          credentials?.username === process.env.ADMIN_USERNAME &&
-          credentials?.password === process.env.ADMIN_PASSWORD
-        ) {
-          return { id: "admin", name: "Admin", email: "admin@example.com" };
-        } else {
-          return null;
-        }
-      },
-    }),
   ],
   callbacks: {
     async jwt({ token, user }: { token: any; user?: any }) {
       if (user) {
-        if (user.id === "admin") {
+        // List of admin emails
+        const adminEmails = [
+          "prinskanyal@gmail.com",
+        ];
+        if (adminEmails.includes(user.email)) {
+          token.role = "admin";
+        } else if (user.email?.endsWith("@gehu.ac.in")) {
           token.role = "admin";
         } else {
           token.role = "volunteer";
@@ -47,4 +35,4 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/",
   },
-};
+}
