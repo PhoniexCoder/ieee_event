@@ -5,7 +5,6 @@ import { GeistMono } from "geist/font/mono"
 import { AuthProvider } from "@/components/auth-provider"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { Toaster } from "@/components/toaster"
-import { InstallAppToast } from "@/components/install-app-toast"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -41,7 +40,6 @@ export default function RootLayout({
           <AuthProvider>
             {children}
             <Toaster />
-            <InstallAppToast />
             {/* Show install app toast if available */}
           </AuthProvider>
         </ErrorBoundary>

@@ -1,28 +1,4 @@
 
-import Google from "next-auth/providers/google"
-// No type annotation due to missing export in next-auth
-export const authOptions = {
-  providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
-  ],
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.role = user.email?.endsWith("@gehu.ac.in") ? "admin" : "volunteer"
-      }
-      return token
-    },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.role = token.role as string
-      }
-      return session
-    },
-  },
-  pages: {
-    signIn: "/",
-  },
-};
+// Deprecated file. Do not import from '@/lib/auth'.
+// Use '@/lib/auth-options' instead. This module will throw if imported to surface mistakes early.
+throw new Error("Deprecated: import 'auth-options' from '@/lib/auth-options' instead of '@/lib/auth'.");
