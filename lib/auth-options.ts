@@ -1,4 +1,5 @@
 import GoogleProvider from "next-auth/providers/google"
+import CredentialsProvider from "next-auth/providers/credentials"
 import type { NextAuthOptions } from "next-auth"
 
 export const authOptions: NextAuthOptions = {
@@ -7,19 +8,60 @@ export const authOptions: NextAuthOptions = {
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
+    CredentialsProvider({
+      name: "Admin Login",
+      credentials: {
+        username: { label: "Username", type: "text" },
+        password: { label: "Password", type: "password" }
+      },
+      async authorize(credentials) {
+        const adminUser = process.env.ADMIN_USERNAME;
+        const adminPass = process.env.ADMIN_PASSWORD;
+
+        if (
+          credentials?.username === adminUser &&
+          credentials?.password === adminPass
+        ) {
+          console.log("Auth Debug: Credentials matched for Admin");
+          return {
+            id: "admin-static-id",
+            name: "Administrator",
+            email: "admin@gehu.ac.in",
+            role: "admin",
+          };
+        }
+        return null;
+      }
+    }),
   ],
   callbacks: {
     async jwt({ token, user }: { token: any; user?: any }) {
       if (user) {
+        console.log("Auth Debug: Processing login for:", user.email);
+
+        if (user.role) {
+          console.log("Auth Debug: Role inherited from User object ->", user.role);
+          token.role = user.role;
+          return token;
+        }
+
         // List of admin emails
         const adminEmails = [
           "prinskanyal@gmail.com",
         ];
-        if (adminEmails.includes(user.email)) {
+
+        // Normalize emails for comparison
+        const lowerCaseUserEmail = user.email?.toLowerCase() || "";
+        const lowerCaseAdminEmails = adminEmails.map(e => e.toLowerCase());
+
+        if (lowerCaseAdminEmails.includes(lowerCaseUserEmail)) {
+          console.log("Auth Debug: Role -> ADMIN (Email Match)");
           token.role = "admin";
-        } else if (user.email?.endsWith("@gehu.ac.in")) {
+        } else if (lowerCaseUserEmail.endsWith("@gehu.ac.in")) {
+          console.log("Auth Debug: Role -> ADMIN (Domain Match)");
           token.role = "admin";
         } else {
+          console.log("Auth Debug: Role -> VOLUNTEER");
           token.role = "volunteer";
         }
       }

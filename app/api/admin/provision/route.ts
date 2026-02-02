@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth-options";
 import { getGoogleSheetsClient, getSpreadsheetConfig, resolveMapping } from "@/lib/google-sheets";
-import { sendQrEmail } from "@/lib/mailer";
+import clientPromise from "@/lib/mongodb";
+import { sendQrEmail, type EventConfig } from "@/lib/mailer";
 
 // Helper to create a simple random QR code (UUID)
 function generateQrId() {
@@ -29,7 +30,7 @@ async function isAuthorized(req: Request) {
     const url = new URL(req.url);
     const q = url.searchParams.get("secret");
     if (secret && q && q === secret) return true;
-  } catch {}
+  } catch { }
   // Otherwise require admin session
   const session: any = await getServerSession(authOptions as any);
   return (session?.user?.role === "admin");
@@ -55,7 +56,7 @@ async function runProvision(req: Request) {
 
     const neededHeaders = [mapping.emailHeader, mapping.nameHeader, mapping.eventNameHeader, mapping.qrHeader, mapping.qrCodeHeader]
       .filter(Boolean) as string[];
-    const idxs = neededHeaders.map(h => indexMap.get(h) ?? -1).filter(i => i >= 0).sort((a,b)=>a-b);
+    const idxs = neededHeaders.map(h => indexMap.get(h) ?? -1).filter(i => i >= 0).sort((a, b) => a - b);
     if (idxs.length === 0) {
       return NextResponse.json({ updated: 0, emailed: 0, message: "No relevant headers found" });
     }
@@ -78,14 +79,14 @@ async function runProvision(req: Request) {
     const setIdx = (header: string) => (indexMap.get(header)! - offset);
     const getQrCodeUrl = (code: string) => `https://quickchart.io/qr?size=220&text=${encodeURIComponent(code)}`;
 
-  type Job = { rowIndex: number; email: string; name?: string; eventName?: string; code: string };
+    type Job = { rowIndex: number; email: string; name?: string; eventName?: string; code: string };
     const jobs: Job[] = [];
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i] || [];
-  const email = getVal(row, mapping.emailHeader);
-  const name = getVal(row, mapping.nameHeader);
-  const eventName = mapping.eventNameHeader ? getVal(row, mapping.eventNameHeader) : activeSheetTitle;
+      const email = getVal(row, mapping.emailHeader);
+      const name = getVal(row, mapping.nameHeader);
+      const eventName = mapping.eventNameHeader ? getVal(row, mapping.eventNameHeader) : activeSheetTitle;
       const qrId = getVal(row, mapping.qrHeader);
       const qrCode = mapping.qrCodeHeader ? getVal(row, mapping.qrCodeHeader) : "";
       if (email && !qrId) {
@@ -95,7 +96,7 @@ async function runProvision(req: Request) {
         if (mapping.qrCodeHeader) {
           row[setIdx(mapping.qrCodeHeader)] = getQrCodeUrl(code);
         }
-  jobs.push({ rowIndex: i + 2, email, name, eventName, code });
+        jobs.push({ rowIndex: i + 2, email, name, eventName, code });
       }
     }
 
@@ -112,16 +113,51 @@ async function runProvision(req: Request) {
       updated = jobs.length;
     }
 
-    // Send emails (best-effort)
+    // Create transport once
+    const { createTransport, sendQrEmail } = await import("@/lib/mailer");
+    const transport = createTransport();
+
+    // Fetch dynamic event settings
+    let eventConfig: EventConfig = {};
+    try {
+      const client = await clientPromise;
+      const db = client.db(process.env.MONGODB_DB_NAME || "ieee_attendance");
+      const settings = await db.collection("settings").findOne({ type: "event_config" });
+      if (settings) {
+        eventConfig = {
+          eventName: settings.eventName,
+          eventVenue: settings.eventVenue,
+          eventDate: settings.eventDate,
+          eventTime: settings.eventTime,
+        };
+      }
+    } catch (e) {
+      console.error("[provision] Failed to fetch settings, using defaults", e);
+    }
+
+    // Send emails in parallel (best-effort)
     let emailed = 0;
-    for (const j of jobs) {
+    const emailPromises = jobs.map(async (j) => {
       try {
-        await sendQrEmail(j.email, j.name, j.code, j.eventName);
-        emailed++;
+        await sendQrEmail(j.email, j.name, j.code, {
+          eventConfig: {
+            ...eventConfig,
+            eventName: j.eventName || eventConfig.eventName // prioritize sheet override if present
+          },
+          transport
+        });
+        return true;
       } catch (e) {
         console.error("[provision] email failed for", j.email, e);
+        return false;
       }
-    }
+    });
+
+    const results = await Promise.all(emailPromises);
+    emailed = results.filter(Boolean).length;
+
+    // Close transport if needed (nodemailer transports are usually kept open, but good practice if pooling)
+    transport.close();
 
     return NextResponse.json({ updated, emailed });
   } catch (error: any) {
