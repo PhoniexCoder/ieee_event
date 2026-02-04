@@ -55,7 +55,7 @@ export async function sendQrEmail(
   const transport = options.transport || createTransport();
   const from = process.env.SMTP_FROM || process.env.SMTP_USER!;
   const safeName = name && name.trim().length > 0 ? name : "Participant";
-  const qrImgUrl = `https://quickchart.io/qr?size=250&text=${encodeURIComponent(code)}`;
+  const qrImgUrl = `https://quickchart.io/qr?size=200&text=${encodeURIComponent(code)}`;
 
   const config = options.eventConfig || {};
   const EVENT_NAME = config.eventName || process.env.EVENT_NAME || "the event";
@@ -114,7 +114,7 @@ export async function sendQrEmail(
             /* QR Code Section */
             .qr-section { text-align: center; background-color: #ffffff; border: 2px dashed #ddd; border-radius: 12px; padding: 20px; margin: 0 20px 30px 20px; }
             .qr-label { font-size: 12px; font-weight: 600; color: #888; text-transform: uppercase; margin-bottom: 15px; letter-spacing: 1px; }
-            .qr-img { max-width: 250px; height: auto; display: block; margin: 0 auto; }
+            .qr-img { max-width: 200px; height: auto; display: block; margin: 0 auto; }
             
             /* Instructions */
             .instructions { background-color: #ffffff; margin-top: 20px; }
