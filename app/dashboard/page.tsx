@@ -451,19 +451,19 @@ export default function DashboardPage() {
                         required
                       />
                     </div>
-                    <Button type="submit" disabled={isSavingSpreadsheet}>
+                    <Button type="submit" className="w-full sm:w-auto" disabled={isSavingSpreadsheet}>
                       {isSavingSpreadsheet ? "Saving..." : "Save"}
                     </Button>
                   </form>
                   {sheets.length > 0 && (
                     <div className="mt-6 space-y-2">
                       <Label>Active Sheet (tab)</Label>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                         <Select
                           value={activeSheet?.title || undefined}
                           onValueChange={(val) => setActiveSheet((prev) => ({ sheetId: prev?.sheetId, title: val }))}
                         >
-                          <SelectTrigger className="w-72">
+                          <SelectTrigger className="w-full sm:w-72">
                             <SelectValue placeholder="Select a sheet" />
                           </SelectTrigger>
                           <SelectContent>
@@ -475,6 +475,7 @@ export default function DashboardPage() {
                         <Button
                           variant="outline"
                           size="sm"
+                          className="w-full sm:w-auto"
                           disabled={isSavingActiveSheet || !activeSheet?.title}
                           onClick={async () => {
                             setIsSavingActiveSheet(true);
@@ -505,8 +506,9 @@ export default function DashboardPage() {
                   {isAdmin && (
                     <div className="mt-6 space-y-2">
                       <Label>Provision QR Codes & Send Emails</Label>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
                         <Button
+                          className="w-full sm:w-auto"
                           onClick={async () => {
                             setIsProvisioning(true);
                             try {
@@ -570,7 +572,7 @@ export default function DashboardPage() {
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="grid gap-2">
                         <Label htmlFor="eventDate">Date</Label>
                         <div className="relative">
@@ -598,7 +600,7 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     </div>
-                    <Button type="submit" disabled={isSavingSettings}>
+                    <Button type="submit" className="w-full sm:w-auto" disabled={isSavingSettings}>
                       {isSavingSettings ? "Saving..." : "Save Details"}
                     </Button>
                   </form>

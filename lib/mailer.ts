@@ -178,7 +178,7 @@ export async function sendQrEmail(
                             <li><strong>Reporting Time:</strong> Please ensure you arrive at the venue 30 minutes prior to the scheduled start time.</li>
                             <li><strong>Check-in Required:</strong> Present the QR code above at the desk to mark your attendance.</li>
                             <li><strong>E-Certificate:</strong> This QR scan is mandatory for your participation certificate.</li>
-                            <li><strong>Online Participants:</strong> If you are attending virtually, please ignore the physical check-in requirement.</li>
+                            <li><strong>Online Participants:</strong> If you are attending virtually, please ignore the physical check-in requirement. (Only if event is hybrid)</li>
                             <li><strong>Stay Updated:</strong> Join our community for live updates using the button below.</li>
                         </ul>
                     </div>
