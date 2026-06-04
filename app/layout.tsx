@@ -8,14 +8,14 @@ import { Toaster } from "@/components/toaster"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "IEEE SB GEHU - Attendance Manager",
-  description: "Progressive Web App for IEEE Student Branch GEHU attendance management",
+  title: "TechToVate - Attendance Manager",
+  description: "Progressive Web App for TechToVate attendance management",
   generator: "NEXT.js",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "IEEE Attendance",
+    title: "TechToVate Attendance",
   },
 }
 

@@ -25,7 +25,7 @@ export async function GET() {
 
         // Return settings or defaults from env if not set in DB
         return NextResponse.json({
-            eventName: settings?.eventName || process.env.EVENT_NAME || "IEEE Event",
+            eventName: settings?.eventName || process.env.EVENT_NAME || "TechToVate Event",
             eventVenue: settings?.eventVenue || process.env.EVENT_VENUE || "",
             eventDate: settings?.eventDate || process.env.EVENT_DATE || "",
             eventTime: settings?.eventTime || process.env.EVENT_TIME || "",

@@ -26,7 +26,7 @@ export const authOptions: NextAuthOptions = {
           return {
             id: "admin-static-id",
             name: "Administrator",
-            email: "admin@gehu.ac.in",
+            email: "techtovate@gmail.com",
             role: "admin",
           };
         }

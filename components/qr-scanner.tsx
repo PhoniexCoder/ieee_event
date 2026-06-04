@@ -148,7 +148,7 @@ export function QRScannerComponent({ onScan, onError }: QRScannerProps) {
 
         {/* Controls */}
         <div className="text-center text-sm text-muted-foreground">
-          <p>Scan IEEE student QR codes</p>
+          <p>Scan TechToVate student QR codes</p>
           <p className="text-xs mt-1">{isOnline ? 
             'Scans will process immediately' : 
             'Scans are being stored offline'}

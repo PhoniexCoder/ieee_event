@@ -1,7 +1,7 @@
 {
-  "name": "IEEE SB GEHU Attendance Manager",
-  "short_name": "IEEE Attendance",
-  "description": "Progressive Web App for IEEE Student Branch GEHU attendance management",
+  "name": "TechToVate Attendance Manager",
+  "short_name": "TechToVate Attendance",
+  "description": "Progressive Web App for TechToVate attendance management",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#1e293b",

@@ -66,7 +66,7 @@ export default function HomePage() {
             <QrCode className="w-10 h-10 text-primary" />
           </div>
           <div className="space-y-2">
-            <h1 className="text-3xl font-bold text-balance">IEEE SB GEHU</h1>
+            <h1 className="text-3xl font-bold text-balance">TechToVate</h1>
             <p className="text-muted-foreground text-pretty">Attendance Management System</p>
             <Badge variant="secondary" className="text-xs">
               Progressive Web App
@@ -178,7 +178,7 @@ export default function HomePage() {
 
         {/* Footer */}
         <div className="text-center text-sm text-muted-foreground">
-          <p>IEEE Student Branch - GEHU</p>
+          <p>TechToVate</p>
           <p className="text-xs mt-1">Secure • Fast • Reliable</p>
         </div>
       </div>

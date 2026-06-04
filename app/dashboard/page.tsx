@@ -65,6 +65,7 @@ export default function DashboardPage() {
   const [isProvisioning, setIsProvisioning] = useState(false)
   const [eventSettings, setEventSettings] = useState({ eventName: "", eventVenue: "", eventDate: "", eventTime: "" })
   const [isSavingSettings, setIsSavingSettings] = useState(false)
+  const [unprovisionedCount, setUnprovisionedCount] = useState<number | null>(null)
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -107,16 +108,49 @@ export default function DashboardPage() {
     }
   }, [])
 
+  const fetchUnprovisionedCount = useCallback(async () => {
+    if (!isAdmin) return;
+    try {
+      const response = await fetch("/api/students")
+      if (response.ok) {
+        const students = await response.json()
+        const count = students.filter((s: any) => s.email && !s.qrId).length
+        setUnprovisionedCount(count)
+      }
+    } catch (error) {
+      console.error("Error fetching unprovisioned count:", error)
+    }
+  }, [isAdmin])
+
   useEffect(() => {
     if (status === "authenticated") {
       const loadInitialData = async () => {
         setIsInitialLoading(true)
-        await Promise.all([fetchStats(), fetchRecentLogs()])
+        const promises = [fetchStats(), fetchRecentLogs()]
+        if (isAdmin) {
+          promises.push(fetchUnprovisionedCount())
+        }
+        await Promise.all(promises)
         setIsInitialLoading(false)
       }
       loadInitialData()
     }
-  }, [status, fetchStats, fetchRecentLogs])
+  }, [status, fetchStats, fetchRecentLogs, fetchUnprovisionedCount, isAdmin])
+
+  // Set up background polling every 10 seconds to keep stats, logs, and provisioning counts dynamically updated
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    
+    const interval = setInterval(async () => {
+      await fetchStats();
+      await fetchRecentLogs();
+      if (isAdmin) {
+        await fetchUnprovisionedCount();
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [status, fetchStats, fetchRecentLogs, fetchUnprovisionedCount, isAdmin]);
 
   // Admin: load Spreadsheet ID
   useEffect(() => {
@@ -253,6 +287,7 @@ export default function DashboardPage() {
       if (res.ok) {
         toast({ title: "Saved", description: "Spreadsheet ID updated." });
         await fetchStats();
+        await fetchUnprovisionedCount();
         // Reload sheets after saving spreadsheet ID so dropdown populates
         try {
           const res2 = await fetch("/api/admin/sheets");
@@ -301,7 +336,11 @@ export default function DashboardPage() {
 
   const refreshData = async () => {
     setIsLoading(true)
-    await Promise.all([fetchStats(), fetchRecentLogs()])
+    const promises = [fetchStats(), fetchRecentLogs()]
+    if (isAdmin) {
+      promises.push(fetchUnprovisionedCount())
+    }
+    await Promise.all(promises)
     setIsLoading(false)
   }
 
@@ -317,7 +356,7 @@ export default function DashboardPage() {
                     <QrCode className="w-5 h-5 text-primary" />
                   </div>
                   <div>
-                    <h1 className="text-xl font-bold">IEEE SB GEHU</h1>
+                    <h1 className="text-xl font-bold">TechToVate</h1>
                     <p className="text-sm text-muted-foreground">Loading...</p>
                   </div>
                 </div>
@@ -340,7 +379,7 @@ export default function DashboardPage() {
                     <QrCode className="w-5 h-5 text-primary" />
                   </div>
                   <div>
-                    <h1 className="text-xl font-bold">IEEE SB GEHU</h1>
+                    <h1 className="text-xl font-bold">TechToVate</h1>
                     <p className="text-sm text-muted-foreground">{isAdmin ? "Admin Dashboard" : "Attendance Dashboard"}</p>
                   </div>
                 </div>
@@ -489,6 +528,7 @@ export default function DashboardPage() {
                               if (res.ok) {
                                 toast({ title: "Active sheet saved" });
                                 await fetchStats();
+                                await fetchUnprovisionedCount();
                               } else {
                                 const data = await res.json();
                                 toast({ title: "Error", description: data.error || "Failed to save.", variant: "destructive" });
@@ -517,6 +557,8 @@ export default function DashboardPage() {
                               if (res.ok) {
                                 const { updated = 0, emailed = 0 } = data || {};
                                 toast({ title: "Provisioned", description: `Generated ${updated} QR codes and emailed ${emailed} participants.` });
+                                await fetchUnprovisionedCount();
+                                await fetchStats();
                               } else {
                                 toast({ title: "Provision failed", description: data?.error || "Unknown error", variant: "destructive" });
                               }
@@ -528,9 +570,13 @@ export default function DashboardPage() {
                           }}
                           disabled={isProvisioning}
                         >
-                          {isProvisioning ? "Running..." : "Provision now"}
+                          {isProvisioning ? "Running..." : `Provision now ${unprovisionedCount !== null ? `(${unprovisionedCount})` : ""}`}
                         </Button>
-                        <p className="text-xs text-muted-foreground">Generates QR_ID for new rows and emails participants.</p>
+                        <p className="text-xs text-muted-foreground">
+                          {unprovisionedCount !== null
+                            ? `${unprovisionedCount} student(s) need provisioning (have email but no QR code).`
+                            : "Generates QR_ID for new rows and emails participants."}
+                        </p>
                       </div>
                     </div>
                   )}

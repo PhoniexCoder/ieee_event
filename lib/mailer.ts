@@ -80,7 +80,7 @@ export async function sendQrEmail(
     `For any further updates regarding the event, please join our Telegram group: https://t.me/+uztdXAOJIXo3YTZl\n\n` +
     `We look forward to seeing you at the event.\n\n` +
     `Best Regards,\n\n` +
-    `The IEEE SB GEHU Team`;
+    `The TechToVate Team`;
 
   const html = `
     <!DOCTYPE html>
@@ -139,7 +139,7 @@ export async function sendQrEmail(
             <div class="webkit">
                 <!-- Header -->
                 <div class="header">
-                    <div class="logo">IEEE-SB GEHU</div>
+                    <div class="logo">TechToVate</div>
                     <div class="event-subtitle">Event Registration Confirmed</div>
                 </div>
 
@@ -185,13 +185,13 @@ export async function sendQrEmail(
 
                     <!-- CTA -->
                     <div class="btn-container">
-                        <a href="https://linktr.ee/IEEE_SB_GEHU" class="btn">Connect with Us</a>
+                        <a href="https://www.instagram.com/techtovate/" class="btn">Connect with Us</a>
                     </div>
                 </div>
 
                 <!-- Footer -->
                 <div class="footer">
-                    <p>&copy; ${new Date().getFullYear()} IEEE Student Branch GEHU. All rights reserved.</p>
+                    <p>&copy; ${new Date().getFullYear()} TechToVate. All rights reserved.</p>
                     <p>This is an automated email. Please do not reply.</p>
                 </div>
             </div>
