@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth-options";
 import { getGoogleSheetsClient, getSpreadsheetConfig, resolveMapping } from "@/lib/google-sheets";
+import { handleApiError } from "@/lib/handle-api-error";
 import clientPromise from "@/lib/mongodb";
-import { sendQrEmail, type EventConfig } from "@/lib/mailer";
+import type { EventConfig } from "@/lib/mailer";
 
 // Helper to create a simple random QR code (UUID)
 function generateQrId() {
@@ -65,8 +66,16 @@ async function runProvision(req: Request) {
     const startA1 = colIndexToA1Local(start);
     const endA1 = colIndexToA1Local(end);
 
-    // Fetch a large range to cover possible new rows
-    const range = `${activeSheetTitle}!${startA1}2:${endA1}1000`;
+    const meta = await sheets.spreadsheets.get({ spreadsheetId });
+    const sheet = meta.data.sheets?.find(s => s.properties?.title === activeSheetTitle);
+    const rowCount = sheet?.properties?.gridProperties?.rowCount || 1000;
+
+    if (rowCount >= 950) {
+      console.warn(`[provision] Warning: Sheet rowCount (${rowCount}) is near the capacity threshold (1000). New entries might be dropped if the limit is exceeded.`);
+    }
+
+    // Fetch a dynamic range to cover all rows up to rowCount
+    const range = `${activeSheetTitle}!${startA1}2:${endA1}${rowCount}`;
     const resp = await sheets.spreadsheets.values.get({ spreadsheetId, range });
     const rows = resp.data.values || [];
 
@@ -113,56 +122,59 @@ async function runProvision(req: Request) {
       updated = jobs.length;
     }
 
-    // Create transport once
-    const { createTransport, sendQrEmail } = await import("@/lib/mailer");
-    const transport = createTransport();
+    // Attempt email sending (best-effort — SMTP may not be configured)
+    let emailed = 0;
+    let emailWarning: string | undefined;
 
-    // Fetch dynamic event settings
-    let eventConfig: EventConfig = {};
     try {
-      const client = await clientPromise;
-      const db = client.db(process.env.MONGODB_DB_NAME || "ieee_attendance");
-      const settings = await db.collection("settings").findOne({ type: "event_config" });
-      if (settings) {
-        eventConfig = {
-          eventName: settings.eventName,
-          eventVenue: settings.eventVenue,
-          eventDate: settings.eventDate,
-          eventTime: settings.eventTime,
-        };
+      const { createTransport, sendQrEmail } = await import("@/lib/mailer");
+      const transport = createTransport();
+
+      // Fetch dynamic event settings
+      let eventConfig: EventConfig = {};
+      try {
+        const client = await clientPromise;
+        const db = client.db(process.env.MONGODB_DB_NAME || "ieee_attendance");
+        const settings = await db.collection("settings").findOne({ type: "event_config" });
+        if (settings) {
+          eventConfig = {
+            eventName: settings.eventName,
+            eventVenue: settings.eventVenue,
+            eventDate: settings.eventDate,
+            eventTime: settings.eventTime,
+          };
+        }
+      } catch (e) {
+        console.error("[provision] Failed to fetch settings, using defaults", e);
       }
-    } catch (e) {
-      console.error("[provision] Failed to fetch settings, using defaults", e);
+
+      const emailPromises = jobs.map(async (j) => {
+        try {
+          await sendQrEmail(j.email, j.name, j.code, {
+            eventConfig: {
+              ...eventConfig,
+              eventName: j.eventName || eventConfig.eventName
+            },
+            transport
+          });
+          return true;
+        } catch (e) {
+          console.error("[provision] email failed for", j.email, e);
+          return false;
+        }
+      });
+
+      const results = await Promise.all(emailPromises);
+      emailed = results.filter(Boolean).length;
+      transport.close();
+    } catch (e: any) {
+      console.warn("[provision] Email sending skipped:", e?.message || e);
+      emailWarning = "SMTP not configured — QR codes generated but no emails sent";
     }
 
-    // Send emails in parallel (best-effort)
-    let emailed = 0;
-    const emailPromises = jobs.map(async (j) => {
-      try {
-        await sendQrEmail(j.email, j.name, j.code, {
-          eventConfig: {
-            ...eventConfig,
-            eventName: j.eventName || eventConfig.eventName // prioritize sheet override if present
-          },
-          transport
-        });
-        return true;
-      } catch (e) {
-        console.error("[provision] email failed for", j.email, e);
-        return false;
-      }
-    });
-
-    const results = await Promise.all(emailPromises);
-    emailed = results.filter(Boolean).length;
-
-    // Close transport if needed (nodemailer transports are usually kept open, but good practice if pooling)
-    transport.close();
-
-    return NextResponse.json({ updated, emailed });
-  } catch (error: any) {
-    console.error("[provision] error:", error);
-    return NextResponse.json({ error: error?.message || "Provisioning failed" }, { status: 500 });
+    return NextResponse.json({ updated, emailed, ...(emailWarning ? { warning: emailWarning } : {}) });
+  } catch (error) {
+    return handleApiError(error, "/api/admin/provision");
   }
 }
 

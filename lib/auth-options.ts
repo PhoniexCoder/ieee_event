@@ -37,7 +37,9 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }: { token: any; user?: any }) {
       if (user) {
-        console.log("Auth Debug: Processing login for:", user.email);
+        if (process.env.DEBUG_AUTH === "true" || process.env.NODE_ENV !== "production") {
+          console.log("Auth Debug: Processing login for:", user.email);
+        }
 
         if (user.role) {
           console.log("Auth Debug: Role inherited from User object ->", user.role);
@@ -45,10 +47,14 @@ export const authOptions: NextAuthOptions = {
           return token;
         }
 
-        // List of admin emails
-        const adminEmails = [
-          "prinskanyal@gmail.com",
-        ];
+        // List of admin emails loaded from environment
+        const adminEmailsEnv = process.env.ADMIN_EMAILS;
+        if (adminEmailsEnv === undefined) {
+          throw new Error("Missing required environment variable ADMIN_EMAILS. The adminEmails variable cannot be initialized.");
+        }
+        const adminEmails = adminEmailsEnv
+          ? adminEmailsEnv.split(",").map((e) => e.trim()).filter(Boolean)
+          : [];
 
         // Normalize emails for comparison
         const lowerCaseUserEmail = user.email?.toLowerCase() || "";

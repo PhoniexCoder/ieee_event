@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth-options";
 import clientPromise from "@/lib/mongodb";
+import { handleApiError, ApiError } from "@/lib/handle-api-error";
 
 // Configuration for the settings document
 const SETTINGS_COLLECTION = "settings";
@@ -12,7 +13,7 @@ export async function GET() {
     const session = await getServerSession(authOptions);
 
     if (!session || (session as any).user?.role !== "admin") {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        return handleApiError(new ApiError("Unauthorized", 401), "/api/admin/settings GET");
     }
 
     try {
@@ -29,9 +30,8 @@ export async function GET() {
             eventDate: settings?.eventDate || process.env.EVENT_DATE || "",
             eventTime: settings?.eventTime || process.env.EVENT_TIME || "",
         });
-    } catch (error: any) {
-        console.error("[settings] GET error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error) {
+        return handleApiError(error, "/api/admin/settings GET");
     }
 }
 
@@ -40,7 +40,7 @@ export async function PUT(req: Request) {
     const session = await getServerSession(authOptions);
 
     if (!session || (session as any).user?.role !== "admin") {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        return handleApiError(new ApiError("Unauthorized", 401), "/api/admin/settings PUT");
     }
 
     try {
@@ -62,15 +62,14 @@ export async function PUT(req: Request) {
                     eventDate,
                     eventTime,
                     updatedAt: new Date(),
-                    updatedBy: session.user?.email
+                    updatedBy: (session as any).user?.email
                 }
             },
             { upsert: true }
         );
 
         return NextResponse.json({ success: true, message: "Settings updated successfully" });
-    } catch (error: any) {
-        console.error("[settings] PUT error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error) {
+        return handleApiError(error, "/api/admin/settings PUT");
     }
 }
